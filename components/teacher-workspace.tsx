@@ -86,9 +86,14 @@ export function TeacherWorkspace({ screen, setScreen }: { screen: string; setScr
   const go = (next: Screen) => setScreen(next)
   return <div className="teacher-workspace" lang="en">
     <nav className="tw-nav" aria-label="Teacher workspace">
-      <div className="tw-nav-links"><button onClick={() => go('dashboard')} className={screen === 'dashboard' ? 'active' : ''}>Dashboard</button><button onClick={() => go('exams')} className={screen === 'exams' || screen === 'create' ? 'active' : ''}>Exams</button><button onClick={() => go('gaps')} className={screen === 'gaps' || screen === 'profile' ? 'active' : ''}>Learning gaps</button><button onClick={() => go('help')} className={screen === 'help' ? 'active' : ''}>Help requests {data.help.filter((item) => item.status === 'New').length > 0 && <em>{data.help.filter((item) => item.status === 'New').length}</em>}</button></div>
+      <div className="tw-nav-links">
+        <button onClick={() => go('dashboard')} className={screen === 'dashboard' ? 'active' : ''} aria-current={screen === 'dashboard' ? 'page' : undefined}>Dashboard</button>
+        <button onClick={() => go('exams')} className={['exams', 'create', 'verify', 'grades'].includes(screen) ? 'active' : ''} aria-current={['exams', 'create', 'verify', 'grades'].includes(screen) ? 'page' : undefined}>Exams</button>
+        <button onClick={() => go('gaps')} className={['gaps', 'profile'].includes(screen) ? 'active' : ''} aria-current={['gaps', 'profile'].includes(screen) ? 'page' : undefined}>Learning gaps</button>
+        <button onClick={() => go('help')} className={screen === 'help' ? 'active' : ''} aria-current={screen === 'help' ? 'page' : undefined}>Help requests {data.help.filter((item) => item.status === 'New').length > 0 && <em>{data.help.filter((item) => item.status === 'New').length}</em>}</button>
+      </div>
     </nav>
-    <div className="tw-body"><aside className="tw-sidebar"><span className="tw-sidebar-label">CLASS 4B · MATH</span><button className={screen === 'dashboard' ? 'active' : ''} onClick={() => go('dashboard')}><BookOpen /> Dashboard</button><button className={screen === 'exams' ? 'active' : ''} onClick={() => go('exams')}><FileText /> Exams</button><button className={screen === 'create' ? 'active' : ''} onClick={() => go('create')}><Plus /> Create exam</button><button className={screen === 'verify' ? 'active' : ''} onClick={() => go('verify')}><ScanLine /> Verify text</button><button className={screen === 'grades' ? 'active' : ''} onClick={() => go('grades')}><ClipboardCheck /> Confirm grades</button><button className={screen === 'gaps' || screen === 'profile' ? 'active' : ''} onClick={() => go('gaps')}><Flag /> Learning gaps</button><button className={screen === 'help' ? 'active' : ''} onClick={() => go('help')}><MessageSquare /> Help requests</button><div className="tw-sidebar-bottom"><ShieldCheck size={16} /> AI suggestions stay pending until you confirm.</div></aside>
+    <div className="tw-body">
     <main className="tw-main">
       {notice && <div className="tw-toast" role="status"><Check size={16} />{notice}<button aria-label="Dismiss message" onClick={() => setNotice('')}><X size={14} /></button></div>}
       {screen === 'dashboard' && <Dashboard data={data} setScreen={go} setExam={(id) => { setSelectedExam(id); go('exams') }} />}
