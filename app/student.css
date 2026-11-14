@@ -91,3 +91,9 @@
 @media (prefers-reduced-motion: reduce) { .student-notification-menu, .notification-target { animation: none; } }
 /* sections opened from a notification clear the sticky header */
 #results-grade, #results-feedback, #results-practice, #student-office-hour { scroll-margin-top: 104px; }
+
+/* Teacher comment on a wrong answer: a speech bubble from Ms. Nadine under the answer */
+.results-sticker-teacher-comment { position: relative; margin-top: 14px; border: 3px solid #1E2250; border-radius: 22px; background: #FFFFFF; box-shadow: 0 4px 0 #1E2250; }
+.results-sticker-teacher-comment::before { content: ''; position: absolute; top: -11px; left: 30px; width: 16px; height: 16px; border-top: 3px solid #1E2250; border-left: 3px solid #1E2250; background: #fff; transform: rotate(45deg); }
+.results-sticker-teacher-avatar { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 3px solid #1E2250; border-radius: 50%; background: #CBE7FF; color: #1E2250; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 20px; font-weight: 700; }
+.results-sticker-teacher-comment small { display: block; color: #4F46E5; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
