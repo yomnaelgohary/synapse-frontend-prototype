@@ -1,17 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X } from 'lucide-react'
 import { TeacherShell } from '@/components/teacher/TeacherShell'
 import type { TeacherChrome } from '@/components/teacher/TeacherHeader'
 import { PageHeader } from '@/components/teacher/PageHeader'
 import { WorkflowStepper } from '@/components/teacher/WorkflowStepper'
+import { OcrEditor, ScanView, ocrTokens, unsureRemaining } from '@/components/teacher/ocr'
 import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, ErrorSummary, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, stateTone } from '@/components/teacher/ui'
 
 type Screen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
 type Student = { id: string; name: string }
 type Exam = { id: string; title: string; subject: string; className: string; language: 'English' | 'German'; date: string; modelFile: string; modelText: string; sureCheck: boolean; faces: boolean; status: string; released: boolean; questions?: Array<{ prompt: string; skill: string; max: number; expected: string }> }
-type Answer = { examId: string; studentId: string; q: number; response: string; sure: 'Sure' | 'Not sure' | 'Guessed'; score: number; ai: number; max: number; state: string; cause: string; confirmed: boolean; overrideReason: string; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; unreadable: boolean; verified: boolean; matched: string; missed: string }
+type Answer = { examId: string; studentId: string; q: number; response: string; sure: 'Sure' | 'Not sure' | 'Guessed'; score: number; ai: number; max: number; state: string; cause: string; confirmed: boolean; overrideReason: string; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; unreadable: boolean; verified: boolean; matched: string; missed: string; scan?: string }
 type HelpRequest = { id: string; studentId: string; topic: string; message: string; status: string; booking: string }
 type FlagRecord = { id: string; studentId: string; skill: string; reason: string; answers: string; status: 'Pending' | 'Confirmed' | 'Dismissed'; comment: string }
 type PracticeAssignment = { id: string; studentId: string; skill: string; exercises: string[] }
@@ -93,14 +94,28 @@ const parseModelCriteria = (text: string): string[] => {
 }
 const person = (id: string) => students.find((student) => student.id === id) ?? students[0]
 
+const STORAGE_KEY = 'synapse-teacher-workflow-v1'
+
+/**
+ * Demo data lives for one page load only. This module is evaluated once per
+ * load, so a browser refresh restores the seed data (Math Quiz 3 starts again
+ * at text verification) whichever role is open. Within the same load, changes
+ * are kept when switching roles, because the student views read them from
+ * localStorage.
+ */
+if (typeof window !== 'undefined') {
+  try { window.localStorage.removeItem(STORAGE_KEY) } catch { /* Storage may be blocked; the seed data is used anyway. */ }
+}
+
 function useTeacherData() {
   const [data, setData] = useState<Data>(initialData)
   const [ready, setReady] = useState(false)
   useEffect(() => {
-    try { const saved = window.localStorage.getItem('synapse-teacher-workflow-v1'); if (saved) setData({ ...initialData, ...JSON.parse(saved) }) } catch { /* Ignore invalid demo data and keep the safe fixtures. */ }
+    // Only data saved earlier in this page load can exist here.
+    try { const saved = window.localStorage.getItem(STORAGE_KEY); if (saved) setData({ ...initialData, ...JSON.parse(saved) }) } catch { /* Ignore invalid demo data and keep the safe fixtures. */ }
     setReady(true)
   }, [])
-  useEffect(() => { if (ready) window.localStorage.setItem('synapse-teacher-workflow-v1', JSON.stringify(data)) }, [data, ready])
+  useEffect(() => { if (ready) { try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) } catch { /* Storage may be blocked; state still works for this page. */ } } }, [data, ready])
   return [data, setData] as const
 }
 
@@ -122,7 +137,7 @@ export function TeacherWorkspace({ screen, setScreen, chrome }: { screen: string
     {screen === 'dashboard' && <Dashboard data={data} setScreen={go} setExam={(id) => { setSelectedExam(id); go('exams') }} />}
     {screen === 'exams' && <ExamList data={data} setScreen={go} setExam={setSelectedExam} />}
     {screen === 'create' && <CreateExam data={data} update={update} setScreen={go} notify={notify} />}
-    {screen === 'verify' && <VerifyText exam={exam} answers={data.answers} update={update} setScreen={go} notify={notify} />}
+    {screen === 'verify' && <VerifyText exam={exam} exams={data.exams} answers={data.answers} update={update} setScreen={go} notify={notify} setExam={setSelectedExam} />}
     {screen === 'grades' && <GradeReview exam={exam} answers={data.answers} data={data} update={update} setScreen={go} notify={notify} setExam={setSelectedExam} />}
     {screen === 'gaps' && <LearningGaps data={data} update={update} setScreen={go} notify={notify} />}
     {screen === 'profile' && <StudentProfile data={data} update={update} setScreen={go} notify={notify} />}
@@ -400,85 +415,137 @@ function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (
  * Queue on the left, scan vs. OCR side by side on the right.
  * ========================================================================== */
 
-function VerifyText({ exam, answers, update, setScreen, notify }: { exam: Exam; answers: Answer[]; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
-  const [mode, setMode] = useState<'student' | 'question'>('student'); const [studentId, setStudentId] = useState('malak'); const [question, setQuestion] = useState(0); const [zoom, setZoom] = useState(1)
+/**
+ * Keeps an exam's workflow status in step with text verification: it stays
+ * "Text verification" until every uploaded answer is confirmed or marked
+ * unreadable, then moves on to "Awaiting confirmation".
+ */
+const withVerificationStatus = (data: Data, examId: string): Data => {
+  const rows = data.answers.filter((item) => item.examId === examId)
+  if (!rows.length) return data
+  const allChecked = rows.every((item) => item.verified || item.unreadable)
+  return { ...data, exams: data.exams.map((item) => item.id === examId && !item.released ? { ...item, status: allChecked ? 'Awaiting confirmation' : 'Text verification' } : item) }
+}
+
+function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }: { exam: Exam; exams: Exam[]; answers: Answer[]; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void; setExam: (id: string) => void }) {
   const examQuestions = questionsForExam(exam.id, [exam])
   const examAnswers = answers.filter((item) => item.examId === exam.id)
-  const selectedAnswers = mode === 'student' ? examAnswers.filter((item) => item.studentId === studentId) : examAnswers.filter((item) => item.q === question)
-  const current = mode === 'student' ? selectedAnswers.find((item) => item.q === question) ?? selectedAnswers[0] : selectedAnswers.find((item) => item.studentId === studentId) ?? selectedAnswers[0]
-  const studentName = person(current?.studentId ?? studentId).name
-  const done = examAnswers.filter((item) => item.verified || item.unreadable).length
-  const patchAnswer = (target: Answer, patch: Partial<Answer>) => update((data) => ({ ...data, answers: data.answers.map((item) => item.examId === target.examId && item.studentId === target.studentId && item.q === target.q ? { ...item, ...patch } : item) }))
-  const markUnreadable = (target: Answer) => { patchAnswer(target, { unreadable: !target.unreadable, verified: !target.unreadable }); notify(target.unreadable ? 'Answer returned to text review.' : 'Marked unreadable. It will not receive an AI grade and needs manual grading.') }
-  const confirmPaper = () => { update((data) => ({ ...data, answers: data.answers.map((item) => item.examId === exam.id && item.studentId === studentId ? { ...item, verified: true } : item), exams: data.exams.map((item) => item.id === exam.id ? { ...item, status: 'Awaiting confirmation' } : item) })); notify(`${person(studentId).name}’s text confirmed. Readable answers can now be graded.`) }
-  const confirmQuestion = () => { update((data) => ({ ...data, answers: data.answers.map((item) => item.examId === exam.id && item.q === question ? { ...item, verified: true } : item), exams: data.exams.map((item) => item.id === exam.id ? { ...item, status: 'Awaiting confirmation' } : item) })); notify(`Question ${question + 1} text confirmed across the class.`) }
-  const paperCount = exam.id === 'quiz-3' ? 6 : Math.ceil(examAnswers.length / 3)
+  const paperStudents = students.filter((student) => examAnswers.some((item) => item.studentId === student.id))
+  const isChecked = (item: Answer) => item.verified || item.unreadable
+  const firstOpen = examAnswers.find((item) => !isChecked(item))
+
+  // The current answer is always one (student, question) pair. "By student"
+  // steps through one student's questions; "By question" steps through every
+  // student's answer to one question (FR 40).
+  const [mode, setMode] = useState<'student' | 'question'>('student')
+  const [studentId, setStudentId] = useState(firstOpen?.studentId ?? paperStudents[0]?.id ?? 'malak')
+  const [question, setQuestion] = useState(firstOpen?.q ?? 0)
+  const [zoom, setZoom] = useState(1)
+  useEffect(() => { setStudentId(firstOpen?.studentId ?? paperStudents[0]?.id ?? 'malak'); setQuestion(firstOpen?.q ?? 0) }, [exam.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const current = examAnswers.find((item) => item.studentId === studentId && item.q === question)
+  const done = examAnswers.filter(isChecked).length
+  const studentAnswers = examAnswers.filter((item) => item.studentId === studentId).sort((a, b) => a.q - b.q)
+  const questionAnswers = paperStudents.map((student) => examAnswers.find((item) => item.studentId === student.id && item.q === question)).filter((item): item is Answer => Boolean(item))
+  const items = mode === 'student' ? studentAnswers : questionAnswers
+  const position = current ? items.indexOf(current) : -1
+  const goTo = (item: Answer | undefined) => { if (!item) return; setStudentId(item.studentId); setQuestion(item.q) }
+  const nextOpen = items.slice(position + 1).find((item) => !isChecked(item)) ?? items.slice(0, Math.max(0, position)).find((item) => !isChecked(item))
+
+  const scanText = current ? current.scan ?? current.response : ''
+  const tokens = current ? ocrTokens(scanText, `${current.examId}:${current.studentId}:${current.q}`) : []
+  const unsureCount = tokens.filter((token) => token.unsure).length
+  const stillUnsure = current ? unsureRemaining(current.response, tokens) : 0
+  const edited = Boolean(current && current.response !== scanText)
+
+  const patchAnswer = (target: Answer, patch: Partial<Answer>) => update((data) => withVerificationStatus({ ...data, answers: data.answers.map((item) => item.examId === target.examId && item.studentId === target.studentId && item.q === target.q ? { ...item, ...patch } : item) }, target.examId))
+  // Editing keeps the original OCR text in `scan`, so the scan never changes.
+  const editText = (target: Answer, value: string) => patchAnswer(target, { response: value, scan: target.scan ?? target.response })
+  // Unreadable answers get no AI grade: any earlier confirmation is cleared and they go to manual grading (FR 44).
+  const markUnreadable = (target: Answer) => { patchAnswer(target, target.unreadable ? { unreadable: false, verified: false, confirmed: false } : { unreadable: true, verified: true, confirmed: false, overrideReason: '' }); notify(target.unreadable ? 'Answer returned to text review.' : 'Marked unreadable. It will not receive an AI grade and needs manual grading.') }
+  const confirmText = (target: Answer) => { patchAnswer(target, { verified: true }); goTo(nextOpen) }
+  const confirmPaper = () => { update((data) => withVerificationStatus({ ...data, answers: data.answers.map((item) => item.examId === exam.id && item.studentId === studentId ? { ...item, verified: true } : item) }, exam.id)); notify(`${person(studentId).name}’s text confirmed. Readable answers can now be graded.`) }
+  const confirmQuestion = () => { update((data) => withVerificationStatus({ ...data, answers: data.answers.map((item) => item.examId === exam.id && item.q === question ? { ...item, verified: true } : item) }, exam.id)); notify(`Question ${question + 1} text confirmed across the class.`) }
+  const paperOpen = studentAnswers.filter((item) => !isChecked(item)).length
+  const questionOpen = questionAnswers.filter((item) => !isChecked(item)).length
+
+  const statusOf = (item: Answer) => item.unreadable ? { tone: 'danger' as const, label: 'Unreadable' } : item.verified ? { tone: 'success' as const, label: 'Confirmed' } : { tone: 'warning' as const, label: 'To check' }
+
   return <>
-    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Verify text' }]} title="Verify extracted text" description={`${exam.title} · ${done} of ${examAnswers.length} answers checked. OCR highlights uncertain words for review.`} actions={<><Button variant="ghost" onClick={() => setScreen('dashboard')}>Back to dashboard</Button><Button variant="secondary" onClick={() => setScreen('grades')}>Continue to grades <ArrowRight size={15} /></Button></>}>
-      <WorkflowStepper current={1} compact />
+    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Verify text' }]} title="Verify extracted text" description="Compare each scanned answer with the OCR text, fix what the OCR misread, then confirm it for grading." actions={<><Button variant="ghost" onClick={() => setScreen('dashboard')}>Back to dashboard</Button><Button variant="secondary" onClick={() => setScreen('grades')}>Continue to grades <ArrowRight size={15} /></Button></>}>
+      <WorkflowStepper current={1} compact onStep={{ 2: () => setScreen('grades') }} />
     </PageHeader>
 
-    <Card className="t-summary">
-      <div className="t-summary-label"><span>Uploaded papers</span><strong>{paperCount} students</strong></div>
-      <ProgressBar label="Answers checked" value={examAnswers.length ? done / examAnswers.length * 100 : 0} tone={done === examAnswers.length ? 'success' : 'accent'} />
-      <Badge tone={done === examAnswers.length ? 'success' : 'warning'}>{done} / {examAnswers.length} answers checked</Badge>
+    <Card className="t-verify-toolbar">
+      <div className="t-verify-exam"><SelectField label="Exam" value={exam.id} options={exams.map((item) => ({ value: item.id, label: item.title }))} onChange={setExam} /></div>
+      <div className="t-verify-progress">
+        <div><strong>{done} of {examAnswers.length}</strong> answers checked · {paperStudents.length} papers</div>
+        <ProgressBar label="Answers checked" value={examAnswers.length ? done / examAnswers.length * 100 : 0} tone={examAnswers.length && done === examAnswers.length ? 'success' : 'accent'} />
+      </div>
+      <div className="t-verify-mode"><span className="t-field-label">Review</span><Segmented label="Review mode" value={mode} onChange={setMode} options={[{ value: 'student', label: <><Users size={14} aria-hidden="true" />One student at a time</> }, { value: 'question', label: <><ClipboardCheck size={14} aria-hidden="true" />One question at a time</> }]} /></div>
     </Card>
 
-    <div className="t-split">
+    {!examAnswers.length ? <Card><EmptyState icon={<FileText size={20} />} title="No uploaded answers for this exam yet." description="Papers appear here once students upload them. Choose another exam above." /></Card> : <div className="t-split">
+      {/* Queue: students in "by student" mode, questions in "by question" mode */}
       <Card padded={false} className="t-split-aside">
-        <CardHeader title="Paper queue" action={<Badge>{examAnswers.length ? Math.ceil(examAnswers.length / 3) : 0}</Badge>} />
-        <div className="t-list">{students.map((student) => {
-          const rows = examAnswers.filter((item) => item.studentId === student.id); if (!rows.length) return null
-          const checked = rows.filter((item) => item.verified || item.unreadable).length
-          return <ListItem key={student.id} active={studentId === student.id && mode === 'student'} onClick={() => { setStudentId(student.id); setMode('student') }} leading={<Avatar name={student.name} />} title={student.name} subtitle={`3 answers · ${checked === 3 ? 'Verified' : checked ? `${checked} checked` : 'Needs text check'}`} trailing={<Badge tone={checked === 3 ? 'success' : 'warning'}>{checked === 3 ? 'Ready' : 'Review'}</Badge>} />
-        })}</div>
+        <CardHeader title={mode === 'student' ? 'Papers' : 'Questions'} action={<Badge>{mode === 'student' ? paperStudents.length : examQuestions.length}</Badge>} />
+        <div className="t-list">{mode === 'student'
+          ? paperStudents.map((student) => {
+              const rows = examAnswers.filter((item) => item.studentId === student.id); const checked = rows.filter(isChecked).length
+              return <ListItem key={student.id} active={studentId === student.id} onClick={() => goTo(rows.find((item) => !isChecked(item)) ?? rows[0])} leading={<Avatar name={student.name} />} title={student.name} subtitle={`${checked} of ${rows.length} answers checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
+            })
+          : examQuestions.map((item, index) => {
+              const rows = examAnswers.filter((answer) => answer.q === index); const checked = rows.filter(isChecked).length
+              return <ListItem key={index} active={question === index} onClick={() => { const same = rows.find((answer) => answer.studentId === studentId); goTo(same && !isChecked(same) ? same : rows.find((answer) => !isChecked(answer)) ?? same ?? rows[0]) }} leading={<span className="t-question-number">Q{index + 1}</span>} title={item.skill} subtitle={`${checked} of ${rows.length} students checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
+            })}</div>
       </Card>
 
       <Card padded={false} className="t-split-main">
-        <CardHeader title={mode === 'student' ? `${studentName} · complete paper` : `${examQuestions[question]?.skill ?? 'Question'} · all students`} action={<Segmented label="Review mode" value={mode} onChange={setMode} options={[{ value: 'student', label: 'By student' }, { value: 'question', label: 'By question' }]} />} />
-        {mode === 'question' && <div className="t-card-section"><Tabs label="Questions" value={question} onChange={setQuestion} options={examQuestions.map((item, index) => ({ value: index, label: `Q${index + 1} · ${item.skill}` }))} /></div>}
+        <CardHeader
+          title={mode === 'student' ? `${person(studentId).name} · answer ${question + 1} of ${studentAnswers.length}` : `Q${question + 1} · ${examQuestions[question]?.skill ?? 'Question'} · student ${position + 1} of ${questionAnswers.length}`}
+          description={examQuestions[question]?.prompt}
+          action={current && <Badge tone={statusOf(current).tone} dot>{statusOf(current).label}</Badge>} />
+        {/* Item strip: every answer in the current mode with its status */}
+        <div className="t-item-strip" role="tablist" aria-label={mode === 'student' ? `${person(studentId).name}'s answers` : `Answers to question ${question + 1}`}>
+          {items.map((item) => { const status = statusOf(item); const active = item === current
+            return <button type="button" role="tab" aria-selected={active} key={`${item.studentId}-${item.q}`} className={cx('t-item-chip', active && 'is-active', `is-${status.tone}`)} onClick={() => goTo(item)}>
+              <i aria-hidden="true" />{mode === 'student' ? `Q${item.q + 1}` : person(item.studentId).name.split(' ')[0]}<span className="t-sr-only"> · {status.label}</span>
+            </button> })}
+        </div>
+
         {current ? <>
-          <div className="t-review-toolbar">
-            <div><strong>{mode === 'student' ? `Answer ${current.q + 1}` : `${studentName} · Q${current.q + 1}`}</strong><small>{examQuestions[current.q]?.prompt}</small></div>
-            <div className="t-zoom" role="group" aria-label="Scan zoom">
-              <button type="button" className="t-icon-btn" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(.8, value - .1))}><ZoomOut size={16} /></button>
-              <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-              <button type="button" className="t-icon-btn" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.5, value + .1))}><ZoomIn size={16} /></button>
-            </div>
-          </div>
           <div className="t-compare">
-            <div className="t-scan-frame">
-              <span className="t-overline">Scanned handwriting · page 2</span>
-              <div className="t-scan" style={{ transform: `scale(${zoom})` }}><strong>{current.response}</strong><small>Handwritten response sample</small></div>
-            </div>
+            <ScanView tokens={tokens} zoom={zoom} onZoom={setZoom} label={`Scan · ${person(current.studentId).name} · answer ${current.q + 1}`} />
             <div className="t-ocr">
-              <div className="t-ocr-head"><span><ScanLine size={16} aria-hidden="true" /> Extracted text</span><Badge tone={current.unreadable ? 'danger' : current.verified ? 'success' : 'warning'} dot>{current.unreadable ? 'Unreadable · manual grade' : current.verified ? 'Confirmed' : 'Low confidence'}</Badge></div>
-              <Alert tone="warning">Highlighted token has low OCR confidence (62%). Please compare with the scan.</Alert>
-              <p className="t-token-preview" aria-label="Extracted text with uncertain token highlighted"><mark>{current.response.split(/\s+/)[0] ?? ''}</mark>{` ${current.response.split(/\s+/).slice(1).join(' ')}`}</p>
-              <TextArea label="Edit extracted answer" rows={3} value={current.response} disabled={current.unreadable} onChange={(value) => patchAnswer(current, { response: value })} />
+              <div className="t-ocr-head">
+                <label htmlFor="ocr-text"><ScanLine size={16} aria-hidden="true" /> Extracted text</label>
+                {edited && <Badge tone="accent">Edited</Badge>}
+              </div>
+              {current.unreadable
+                ? <Alert tone="error" title="Marked unreadable">No AI grade will be suggested for this answer. It goes to manual grading in Confirm AI grades.</Alert>
+                : <p className="t-ocr-legend" id="ocr-legend">{stillUnsure ? <><mark className="is-unsure">{stillUnsure}</mark> {stillUnsure === 1 ? 'word or number' : 'words or numbers'} the OCR was unsure about. Compare {stillUnsure === 1 ? 'it' : 'them'} with the scan and type any correction directly in the text.</> : unsureCount ? <><Check size={13} aria-hidden="true" /> All {unsureCount} unsure {unsureCount === 1 ? 'token was' : 'tokens were'} reviewed or corrected.</> : <><Check size={13} aria-hidden="true" /> The OCR was confident about every word.</>}</p>}
+              <OcrEditor id="ocr-text" value={current.response} tokens={tokens} disabled={current.unreadable} reviewed={current.verified && !current.unreadable} describedBy="ocr-legend" onChange={(value) => editText(current, value)} />
+              {edited && !current.unreadable && <div className="t-ocr-edit-row"><small className="t-muted">Original OCR: “{scanText}”</small><Button variant="ghost" size="sm" onClick={() => patchAnswer(current, { response: scanText })}>Restore OCR text</Button></div>}
               <DescriptionList items={[{ term: 'Question', detail: examQuestions[current.q]?.prompt }, { term: 'Model answer', detail: examQuestions[current.q]?.expected }]} />
               <div className="t-actions">
-                <Button variant="ghost" onClick={() => notify('Correction saved to this answer.')}>Save correction</Button>
+                <Button variant="ghost" disabled={!edited || current.unreadable} onClick={() => notify('Correction saved to this answer.')}>Save correction</Button>
                 <Button variant="secondary" onClick={() => markUnreadable(current)}>{current.unreadable ? 'Restore answer' : 'Mark unreadable'}</Button>
-                <Button variant="secondary" icon={<Check size={15} />} onClick={() => patchAnswer(current, { verified: true })} disabled={current.unreadable || current.verified}>{current.verified ? 'Text confirmed' : 'Confirm text'}</Button>
+                <Button icon={<Check size={15} />} onClick={() => confirmText(current)} disabled={current.unreadable || current.verified}>{current.verified ? 'Text confirmed' : nextOpen ? 'Confirm and next' : 'Confirm text'}</Button>
               </div>
             </div>
           </div>
-          {mode === 'student' && <footer className="t-card-footer t-pager">
-            <span>Answer {current.q + 1} of {selectedAnswers.length}</span>
+          <footer className="t-card-footer t-pager">
             <div className="t-actions">
-              <Button variant="ghost" icon={<ChevronLeft size={15} />} disabled={current.q === 0} onClick={() => setQuestion(Math.max(0, current.q - 1))}>Previous</Button>
-              <Button variant="secondary" disabled={current.q >= selectedAnswers.length - 1} onClick={() => setQuestion(Math.min(selectedAnswers.length - 1, current.q + 1))}>Next answer <ChevronRight size={15} /></Button>
-              <Button icon={<Check size={15} />} onClick={confirmPaper}>Confirm paper text</Button>
+              <Button variant="ghost" icon={<ChevronLeft size={15} />} disabled={position <= 0} onClick={() => goTo(items[position - 1])}>Previous</Button>
+              <Button variant="secondary" disabled={position >= items.length - 1} onClick={() => goTo(items[position + 1])}>{mode === 'student' ? 'Next answer' : 'Next student'} <ChevronRight size={15} /></Button>
             </div>
-          </footer>}
-          {mode === 'question' && <footer className="t-card-footer t-pager">
-            <span>Question {question + 1} of {examQuestions.length} · {selectedAnswers.filter((item) => item.verified || item.unreadable).length} checked</span>
-            <Button icon={<Check size={15} />} onClick={confirmQuestion}>Confirm question for all</Button>
-          </footer>}
-        </> : <EmptyState icon={<FileText size={20} />} title="No uploaded answers for this exam yet." description="Choose an exam with submitted papers." action={<Button variant="secondary" onClick={() => setScreen('exams')}>Go to exams</Button>} />}
+            {mode === 'student'
+              ? <Button variant="secondary" icon={<Check size={15} />} disabled={!paperOpen} onClick={confirmPaper}>{paperOpen ? `Confirm paper text (${paperOpen} left)` : 'Paper text confirmed'}</Button>
+              : <Button variant="secondary" icon={<Check size={15} />} disabled={!questionOpen} onClick={confirmQuestion}>{questionOpen ? `Confirm question for all (${questionOpen} left)` : 'Question confirmed for all'}</Button>}
+          </footer>
+        </> : <EmptyState icon={<FileText size={20} />} title={`${person(studentId).name} has no answer for question ${question + 1}.`} description="Choose another answer from the list." />}
       </Card>
-    </div>
+    </div>}
   </>
 }
 
@@ -507,7 +574,7 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
   const copyGrades = <><Button variant="secondary" icon={<Download size={15} />} onClick={exportCsv}>Export grades</Button><Button icon={<Send size={15} />} onClick={() => setReleaseConfirm(true)} disabled={exam.released}>{exam.released ? 'Results released' : 'Release confirmed results'}</Button></>
   return <>
     <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Confirm grades' }]} title="Confirm AI grades" description={`${exam.title} · ${allExamAnswers.length} readable answers · teacher decisions are final.`} actions={copyGrades}>
-      <WorkflowStepper current={exam.released ? 3 : 2} compact />
+      <WorkflowStepper current={exam.released ? 3 : 2} compact onStep={{ 1: () => setScreen('verify') }} />
     </PageHeader>
 
     <Card className="t-grade-toolbar">
