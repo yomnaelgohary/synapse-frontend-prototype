@@ -71,7 +71,7 @@ function Sidebar({ screen, setScreen, role }: { screen: Screen, setScreen: (s: S
   const { t } = useLanguage()
   const items: Array<[string, string, React.ElementType]> = role === 'teacher' ? [
     ['dashboard', 'Dashboard', LayoutDashboard], ['exams', 'Exams', FileText], ['create', 'Create exam', Plus], ['verify', 'Verify text', ScanLine], ['grades', 'Confirm grades', FileCheck2], ['gaps', 'Learning gaps', Flag], ['profile', 'Student profiles', Users], ['help', 'Help requests', MessageCircle],
-  ] : [['home', 'Home', Home], ['upload', 'Upload exam', Upload], ['results', 'My results', ClipboardList], ['progress', 'My progress', Star], ['help', 'Ask for help', HelpCircle]]
+  ] : [['home', 'Home', Home], ['upload', 'Upload exam', Upload], ['results', 'My results', ClipboardList], ['progress', 'My progress', Sprout], ['help', 'Ask for help', HelpCircle]]
   return <aside className="sidebar"><div className="view-label">{t(role === 'teacher' ? 'Teacher view' : role === 'parent' ? 'Parent view' : 'Student view')}</div>{items.map(([id, label, Icon]) => <button key={id} onClick={() => setScreen(id)} className={`side-item ${screen === id ? 'selected' : ''}`} aria-current={screen === id ? 'page' : undefined}><Icon size={18} />{t(label)}</button>)}<div className="sidebar-bottom"><button className="side-item"><Settings size={18} />{t('Settings')}</button><div className="demo-note">Frontend prototype<br /><span>Mock data only</span></div></div></aside>
 }
 
@@ -219,7 +219,96 @@ function ResultsInteractive({ setScreen }: { setScreen: (s: Screen) => void }) {
   return <><PageHeader eyebrow="My results" title="My submitted exams" description="Open a quiz to see its score, questions, feedback and progress." action={<Button variant="ghost" onClick={() => setScreen('home')} icon={<Home size={16} />}>Home</Button>} /><div className="results-tabs" role="tablist" aria-label="Submitted exams">{submittedQuizzes.map((quiz) => <button key={quiz.id} role="tab" aria-selected={selected.id === quiz.id} className={`results-tab ${selected.id === quiz.id ? 'active' : ''}`} onClick={() => setSelectedId(quiz.id)}><span><strong>{quiz.title}</strong><small>{quiz.subject} · {quiz.date}</small></span>{quiz.status === 'graded' ? <Badge tone="success">{quiz.score}</Badge> : <Badge tone="warning">Your teacher is checking your exam</Badge>}</button>)}</div>{selected.status === 'checking' ? <Card className="checking-card"><div className="checking-icon"><ClipboardList size={24} /></div><h2>Your teacher is checking your exam</h2><p>{selected.title} was submitted on {selected.date}. Your grade and feedback will appear here after Ms. Nadine confirms and releases them.</p><StatusTracker current={1} /></Card> : <><Card className="grade-hero"><div><span className="eyebrow">{selected.title}</span><div className="big-grade">{selected.score?.split(' ')[0]}<span>/10</span></div><Badge tone="success">Grade confirmed and released</Badge></div><div className="teacher-note"><MessageCircle size={18} /><div><strong>Message from Ms. Nadine</strong><p>Great effort, Malak! You are getting better at finding equivalent fractions.</p></div></div></Card><Card><div className="card-title"><h2>Look at your answers</h2><Badge tone="neutral">3 questions</Badge></div><div className="answer-list"><div className="answer-row"><span className="q-mark correct">✓</span><div className="grow"><strong>Q1 · Which fraction is larger?</strong><p>Your answer: 3/4</p></div><strong>3/3</strong></div><div className="answer-row look-again"><span className="q-mark wrong">!</span><div className="grow"><strong>Q2 · Compare 2/5 and 3/5</strong><p>Your answer: 2/5 · You were sure</p><div className="hint"><strong>Let's take a second look!</strong><br />Hint: Compare the top numbers when the bottom numbers are the same.<br /><span>Correct way: 3/5 is larger because 3 is greater than 2.</span></div></div><strong>1/3</strong></div><div className="answer-row"><span className="q-mark correct">✓</span><div className="grow"><strong>Q3 · Equivalent fractions</strong><p>Your answer: 4/8</p></div><strong>4/4</strong></div></div></Card><div className="two-col"><Card><div className="card-title"><h2>My weak skills</h2></div><button className="practice-launch" onClick={() => openPractice('Comparing fractions')}><span>Comparing fractions</span><Badge tone="warning">Keep practising</Badge><ChevronRight size={16} /></button><button className="practice-launch" onClick={() => openPractice('Equivalent fractions')}><span>Equivalent fractions</span><Badge tone="success">Getting stronger</Badge><ChevronRight size={16} /></button></Card><Card><div className="card-title"><h2>Practice to do</h2></div><button className="practice-launch" onClick={() => openPractice('Comparing fractions')}><span><strong>Fraction comparison set</strong><small>3 questions · from Ms. Nadine</small></span><ChevronRight size={16} /></button><button className="practice-launch" onClick={() => openPractice('Equivalent fractions')}><span><strong>Fractions on a number line</strong><small>3 questions · from Ms. Nadine</small></span><ChevronRight size={16} /></button></Card></div></>}{practiceSkill && <div className="modal-backdrop"><div className="modal practice-modal"><button className="modal-close" aria-label="Close practice" onClick={() => setPracticeSkill(null)}><X /></button><div className="eyebrow">Practice from Ms. Nadine</div><h2>{practiceSkill}</h2><p>Answer each question, then mark it done when you have practised it.</p><div className="practice-questions">{practiceQuestions[practiceSkill].map((question, index) => <label className="practice-question" key={question}><input type="checkbox" checked={practiceDone[practiceSkill]?.[index] ?? false} onChange={() => togglePracticeQuestion(index)} /><span><strong>Question {index + 1}</strong><span>{question}</span></span></label>)}</div><Button onClick={() => setPracticeSkill(null)}>{practiceDone[practiceSkill]?.every(Boolean) ? 'Done' : 'Save progress'}</Button></div></div>}</>
 }
 
-function Progress({ setScreen }: { setScreen: (s: Screen) => void }) { return <><PageHeader eyebrow="My progress" title="See how you are learning" description="Your skills across Math exams" action={<Button variant="ghost" onClick={() => setScreen('help')} icon={<HelpCircle size={16} />}>Ask for help</Button>} /><div className="progress-grid"><Card><div className="card-title"><h2>Skill progress</h2><Badge tone="success">1 improvement</Badge></div>{[['Comparing fractions', 'Known gap', 'warning'], ['Equivalent fractions', 'Secure', 'success'], ['Word problems', 'Wobbly', 'warning'], ['Reading the question', 'Surprise mistake', 'danger']].map(([s, state, tone], i) => <div className="skill-progress" key={s}><div className="skill-top"><strong>{i === 1 && <Star size={14} fill="currentColor" />} {s}</strong><Badge tone={tone}>{state}</Badge></div><div className="bar"><span style={{ width: `${[35, 88, 60, 48][i]}%` }} /></div><small>{i === 1 ? 'You moved from Wobbly to Secure!' : `Across ${i + 2} exams`}</small></div>)}</Card><Card><div className="card-title"><h2>Grade history</h2><Badge tone="neutral">Math</Badge></div><div className="chart"><div className="chart-line"><span style={{ left: '8%', bottom: '30%' }} /><span style={{ left: '32%', bottom: '55%' }} /><span style={{ left: '56%', bottom: '48%' }} /><span style={{ left: '82%', bottom: '78%' }} /></div><div className="chart-labels"><span>Quiz 1<br /><b>6/10</b></span><span>Midterm<br /><b>7/10</b></span><span>Quiz 2<br /><b>8/10</b></span><span>Quiz 3<br /><b>Checking</b></span></div></div></Card></div><Card className="support-note"><Flag size={19} /><div><strong>Your teacher will help you practise fractions</strong><p>Ms. Nadine noticed comparing fractions has been tricky in more than one exam.</p></div></Card></> }
+const progressSkillData = [
+  { name: 'Comparing fractions', state: 'Known gap', progress: 35, count: 2, improved: false },
+  { name: 'Equivalent fractions', state: 'Secure', progress: 88, count: 3, improved: true },
+  { name: 'Word problems', state: 'Wobbly', progress: 60, count: 4, improved: false },
+  { name: 'Reading the question', state: 'Surprise mistake', progress: 48, count: 5, improved: false },
+] as const
+
+const progressExamData = [
+  { name: 'Quiz 1', grade: 6, checking: false },
+  { name: 'Midterm', grade: 7, checking: false },
+  { name: 'Quiz 2', grade: 8, checking: false },
+  { name: 'Quiz 3', grade: null, checking: true },
+] as const
+
+function ProgressPlant({ state }: { state: string }) {
+  return <svg className={`progress-plant progress-plant-${state.toLowerCase().replaceAll(' ', '-')}`} viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M17 39h30l-4 18H21z" fill="#FF8A6B" stroke="#1E2250" strokeWidth="3" strokeLinejoin="round" />
+    <path d="M22 39c2-6 18-6 20 0" fill="#8C84F5" stroke="#1E2250" strokeWidth="3" />
+    <path d="M32 38V19" fill="none" stroke="#1E2250" strokeWidth="3" strokeLinecap="round" />
+    {state === 'Known gap' && <><path d="M32 27c-7-8-12-6-12-2 0 5 6 7 12 2" fill="#4FD8A8" stroke="#1E2250" strokeWidth="2.5" /><circle cx="32" cy="17" r="4" fill="#FFC933" stroke="#1E2250" strokeWidth="2" /></>}
+    {state === 'Wobbly' && <><path d="M32 27c-7-9-14-6-12-2 2 4 7 4 12 2" fill="#4FD8A8" stroke="#1E2250" strokeWidth="2.5" /><path d="M31 23c3-8 10-9 12-6 1 4-4 7-12 6" fill="#4FD8A8" stroke="#1E2250" strokeWidth="2.5" /></>}
+    {state === 'Secure' && <><path d="M32 28c-7-7-13-5-12-1 2 4 7 4 12 1m0-7c6-8 13-6 12-2-1 4-6 5-12 2" fill="#4FD8A8" stroke="#1E2250" strokeWidth="2.5" /><path d="M32 19c-7-5-3-11 0-10 4 0 7 5 0 10m0 0c-7 0-8-7-4-8m4 8c7-1 8-7 4-8" fill="#FFC933" stroke="#1E2250" strokeWidth="2" strokeLinejoin="round" /></>}
+    {state === 'Surprise mistake' && <><path d="M32 28c-7-8-12-5-11-1 1 4 7 5 11 1m0-5c7-7 12-4 11 0-1 4-6 4-11 0" fill="#4FD8A8" stroke="#1E2250" strokeWidth="2.5" /><path d="M49 11v10m-5-5h10" stroke="#FFC933" strokeWidth="3" strokeLinecap="round" /></>}
+  </svg>
+}
+
+function ProgressStateIcon({ state }: { state: string }) {
+  if (state === 'Secure') return <Sparkles aria-hidden="true" />
+  if (state === 'Wobbly') return <Zap aria-hidden="true" />
+  if (state === 'Known gap') return <Sprout aria-hidden="true" />
+  return <Sparkles aria-hidden="true" />
+}
+
+function Progress({ setScreen }: { setScreen: (s: Screen) => void }) {
+  const { t } = useLanguage()
+  const chartSummary = progressExamData.map(({ name, grade, checking }) => `${name}: ${checking ? 'Checking' : `${grade}/10`}`).join(', ')
+  const gradedExams = progressExamData.filter((exam) => !exam.checking && exam.grade !== null)
+  const chartPoints = gradedExams.map((exam, index) => ({ x: 75 + index * (450 / Math.max(gradedExams.length - 1, 1)), y: 275 - (exam.grade ?? 0) * 20 }))
+  const chartLine = chartPoints.map(({ x, y }) => `${x},${y}`).join(' ')
+  const chartArea = chartPoints.length ? `75,275 ${chartLine} ${chartPoints[chartPoints.length - 1].x},275` : ''
+
+  return <div className={`progress-sticker-page ${fredoka.variable} ${nunito.variable}`}>
+    <section className="progress-sticker-hero">
+      <span className="progress-hero-orb" aria-hidden="true" />
+      <Star className="progress-hero-star" aria-hidden="true" />
+      <SynaMascot size="tip" decorative />
+      <div className="progress-hero-copy">
+        <span className="progress-eyebrow"><Sprout size={16} aria-hidden="true" />{t('My progress')}</span>
+        <h1>{t('See how you are learning')}</h1>
+        <p>{t('Your skills across Math exams')}</p>
+      </div>
+      <Button variant="ghost" onClick={() => setScreen('help')} icon={<HelpCircle size={18} aria-hidden="true" />}>{t('Ask for help')}</Button>
+    </section>
+
+    <div className="progress-sticker-grid">
+      <Card className="progress-skills-card">
+        <div className="progress-section-heading"><h2>{t('Skill progress')}</h2><span className="progress-improvement"><Star size={17} fill="#FFC933" aria-hidden="true" />{t('1 improvement')}</span></div>
+        <ul className="progress-skill-list">
+          {progressSkillData.map(({ name, state, progress, count, improved }) => <li className={`progress-skill-row progress-state-${state.toLowerCase().replaceAll(' ', '-')} ${improved ? 'progress-skill-improved' : ''}`} key={name}>
+            <span className="progress-plant-tile"><ProgressPlant state={state} /></span>
+            <div className="progress-skill-content">
+              <div className="progress-skill-heading">{improved && <Star className="progress-improved-star" size={23} fill="#FFC933" aria-label="Improved skill" />}<strong>{t(name)}</strong><span className="progress-state-chip"><ProgressStateIcon state={state} />{t(state)}</span></div>
+              <div className="progress-bar-track" aria-hidden="true"><span className="progress-bar-fill" style={{ width: `${progress}%` }} /></div>
+              <small className={improved ? 'progress-helper-success' : ''}>{improved ? t('You moved from Wobbly to Secure!') : `${t('Across')} ${count} ${t('exams')}`}</small>
+            </div>
+          </li>)}
+        </ul>
+      </Card>
+
+      <Card className="progress-history-card">
+        <div className="progress-section-heading"><h2>{t('Grade history')}</h2><span className="progress-subject-chip"><span aria-hidden="true">÷</span>{t('Math')}</span></div>
+        <div className="progress-chart-wrap">
+          <svg className="progress-chart" viewBox="0 0 600 330" role="img" aria-label={`${t('Grade history')}: ${chartSummary}`}>
+            {[90, 165, 240].map((y) => <line key={y} x1="20" y1={y} x2="580" y2={y} className="progress-chart-gridline" />)}
+            {chartArea && <polygon points={chartArea} className="progress-chart-area" />}
+            {chartLine && <polyline points={chartLine} className="progress-chart-line" />}
+            {chartPoints.map(({ x, y }, index) => <g key={`${x}-${y}`}>
+              <circle cx={x} cy={y} r={index === chartPoints.length - 1 ? 12 : 10} className={index === chartPoints.length - 1 ? 'progress-chart-point progress-chart-point-latest' : 'progress-chart-point'} />
+              {index === chartPoints.length - 1 && <path d={`M${x} ${y - 34}l3 7 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1z`} className="progress-chart-star" aria-hidden="true" />}
+            </g>)}
+            {progressExamData.filter((exam) => exam.checking).map((exam, index) => <g key={exam.name} className="progress-chart-checking" transform={`translate(${525 + index * 30} 240)`} aria-hidden="true"><circle r="17" /><path d="M-4-8h8m-7 0 2 5-2 5h6m-6 0h8m-6-5h4" /></g>)}
+          </svg>
+          <div className="progress-chart-labels">{progressExamData.map(({ name, grade, checking }) => <div className="progress-chart-label" key={name}><strong>{t(name)}</strong>{checking ? <span className="progress-checking-chip"><span aria-hidden="true">⌛</span>{t('Checking')}</span> : <b>{grade}/10</b>}</div>)}</div>
+        </div>
+      </Card>
+    </div>
+
+    <aside className="progress-support-note"><span className="progress-flag-tile"><Flag size={25} aria-hidden="true" /></span><div><strong>{t('Your teacher will help you practise fractions')}</strong><p>{t('Ms. Nadine noticed comparing fractions has been tricky in more than one exam.')}</p></div><SynaMascot size="tip" decorative /></aside>
+  </div>
+}
 
 function Help({ setScreen }: { setScreen: (s: Screen) => void }) {
   const { t } = useLanguage()
