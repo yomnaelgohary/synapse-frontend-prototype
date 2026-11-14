@@ -1,14 +1,16 @@
 'use client'
 
 /**
- * Global teacher header: brand, primary navigation, and account utilities
- * (language, notifications, user).
- * Navigation lives in one place for every teacher screen, and the active
- * section stays highlighted on sub-pages (e.g. "Exams" while verifying text),
- * so teachers always know where they are (Nielsen #1, #6).
+ * Global teacher header (sticker theme): brand, primary navigation, language,
+ * notifications and profile. It is the only header on teacher pages; below
+ * 900px the same four sections move to a bottom tab bar.
+ *
+ * The app navigates with screen state rather than routes, so items are buttons
+ * with aria-current="page"; a section stays active on its sub-pages (e.g.
+ * "Exams" while verifying text).
  */
 
-import { Bell, ClipboardList, Inbox, Languages, LayoutDashboard, LogOut, Sparkles, Target } from 'lucide-react'
+import { Bell, FileText, Inbox, LayoutDashboard, LogOut, Sparkles, Target } from 'lucide-react'
 import { cx } from './ui'
 
 export type TeacherScreen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
@@ -21,44 +23,54 @@ export type TeacherChrome = {
   onSignOut?: () => void
 }
 
-/** Primary sections and the screens that belong to each one. */
-export const teacherSections: Array<{ id: TeacherScreen; label: string; icon: React.ElementType; screens: TeacherScreen[] }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, screens: ['dashboard'] },
-  { id: 'exams', label: 'Exams', icon: ClipboardList, screens: ['exams', 'create', 'verify', 'grades'] },
-  { id: 'gaps', label: 'Learning gaps', icon: Target, screens: ['gaps', 'profile'] },
-  { id: 'help', label: 'Help requests', icon: Inbox, screens: ['help'] },
+/** Primary sections, the screens that belong to each, and their fixed tile colour. */
+export const teacherSections: Array<{ id: TeacherScreen; label: string; icon: React.ElementType; tile: 'lavender' | 'sun' | 'coral' | 'sky'; screens: TeacherScreen[] }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, tile: 'lavender', screens: ['dashboard'] },
+  { id: 'exams', label: 'Exams', icon: FileText, tile: 'sun', screens: ['exams', 'create', 'verify', 'grades'] },
+  { id: 'gaps', label: 'Learning gaps', icon: Target, tile: 'coral', screens: ['gaps', 'profile'] },
+  { id: 'help', label: 'Help requests', icon: Inbox, tile: 'sky', screens: ['help'] },
 ]
 
-export function TeacherHeader({ screen, onNavigate, helpCount, chrome }: { screen: string; onNavigate: (screen: TeacherScreen) => void; helpCount: number; chrome?: TeacherChrome }) {
-  return <header className="t-header">
-    <div className="t-header-inner">
-      <button type="button" className="t-brand" onClick={() => onNavigate('dashboard')} aria-label="Synapse, go to dashboard">
-        <span className="t-brand-mark" aria-hidden="true"><Sparkles size={15} /></span>
-        <span>synapse</span>
-        <span className="t-brand-tag">Teacher</span>
-      </button>
+/** One section link; shared by the top nav and the phone tab bar. */
+function SectionLink({ section, active, helpCount, onNavigate, variant }: { section: (typeof teacherSections)[number]; active: boolean; helpCount: number; onNavigate: (screen: TeacherScreen) => void; variant: 'nav' | 'tab' }) {
+  const Icon = section.icon
+  return <button type="button" className={cx(variant === 'nav' ? 'ts-nav-item' : 'ts-tab', active && 'is-active')} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(section.id)}>
+    <span className={cx('ts-nav-tile', `ts-tile-${section.tile}`)} aria-hidden="true"><Icon size={variant === 'nav' ? 18 : 20} strokeWidth={2.4} /></span>
+    <span className="ts-nav-label">{section.label}</span>
+    {section.id === 'help' && helpCount > 0 && <em className="ts-nav-count" aria-label={`${helpCount} new`}>{helpCount}</em>}
+  </button>
+}
 
-      <nav className="t-nav" aria-label="Teacher workspace">
-        {teacherSections.map((section) => {
-          const active = section.screens.includes(screen as TeacherScreen)
-          const Icon = section.icon
-          return <button type="button" key={section.id} className={cx('t-nav-item', active && 'is-active')} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(section.id)}>
-            <Icon size={16} aria-hidden="true" /><span>{section.label}</span>
-            {section.id === 'help' && helpCount > 0 && <em aria-label={`${helpCount} new`}>{helpCount}</em>}
-          </button>
-        })}
+export function TeacherHeader({ screen, onNavigate, helpCount, chrome }: { screen: string; onNavigate: (screen: TeacherScreen) => void; helpCount: number; chrome?: TeacherChrome }) {
+  const isActive = (section: (typeof teacherSections)[number]) => section.screens.includes(screen as TeacherScreen)
+  return <>
+    <header className="ts-header">
+      <button type="button" className="ts-brand" onClick={() => onNavigate('dashboard')} aria-label="synapse home">
+        <span className="ts-brand-mark" aria-hidden="true"><Sparkles size={24} strokeWidth={2.4} /></span>
+        <span className="ts-brand-word" aria-hidden="true">synapse</span>
+      </button>
+      <span className="ts-role-chip">Teacher</span>
+
+      <nav className="ts-nav" aria-label="Teacher workspace">
+        {teacherSections.map((section) => <SectionLink key={section.id} section={section} active={isActive(section)} helpCount={helpCount} onNavigate={onNavigate} variant="nav" />)}
       </nav>
 
-      <div className="t-header-tools">
-        {chrome && <button type="button" className="t-icon-btn t-lang" onClick={() => chrome.onLanguageChange(chrome.language === 'EN' ? 'DE' : 'EN')} aria-label={`Interface language: ${chrome.language}. Switch to ${chrome.language === 'EN' ? 'DE' : 'EN'}`}>
-          <Languages size={16} aria-hidden="true" />{chrome.language}
-        </button>}
-        <button type="button" className="t-icon-btn t-bell" onClick={() => onNavigate('help')} aria-label={`Notifications, ${helpCount} new help requests`}>
-          <Bell size={18} aria-hidden="true" />{helpCount > 0 && <b aria-hidden="true">{helpCount}</b>}
+      <div className="ts-header-tools">
+        {/* Same EN | DE control as the student bar; it calls the existing language switch. */}
+        {chrome && <div className="ts-lang" role="group" aria-label="Interface language">
+          {(['EN', 'DE'] as const).map((code) => <button type="button" key={code} aria-pressed={chrome.language === code} onClick={() => chrome.language !== code && chrome.onLanguageChange(code)}>{code}</button>)}
+        </div>}
+        <button type="button" className="ts-round-btn ts-bell" onClick={() => onNavigate('help')} aria-label={`Notifications, ${helpCount} new`}>
+          <Bell size={22} strokeWidth={2.4} aria-hidden="true" />{helpCount > 0 && <b aria-hidden="true">{helpCount}</b>}
         </button>
-        <span className="t-user"><span className="t-avatar t-avatar-sm" aria-hidden="true">N</span><span className="t-user-name">Ms. Nadine</span></span>
-        {chrome?.onSignOut && <button type="button" className="t-icon-btn" onClick={chrome.onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} aria-hidden="true" /></button>}
+        <span className="ts-profile"><span className="ts-avatar" aria-hidden="true">N</span><span className="ts-profile-name">Ms. Nadine</span></span>
+        {chrome?.onSignOut && <button type="button" className="ts-round-btn" onClick={chrome.onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={20} strokeWidth={2.4} aria-hidden="true" /></button>}
       </div>
-    </div>
-  </header>
+    </header>
+
+    {/* Phone tab bar: the same four sections, shown below 900px. */}
+    <nav className="ts-tabbar" aria-label="Teacher workspace sections">
+      {teacherSections.map((section) => <SectionLink key={section.id} section={section} active={isActive(section)} helpCount={helpCount} onNavigate={onNavigate} variant="tab" />)}
+    </nav>
+  </>
 }
