@@ -6,8 +6,8 @@ import { StudentUploadFlow } from '@/components/student-upload-flow'
 import { StudentResults } from '@/components/student-results'
 import { TeacherWorkspace } from '@/components/teacher-workspace'
 import {
-  Bell, BookOpen, CalendarDays, Camera, Check, ChevronRight, ClipboardList, FileCheck2, FileText,
-  Flag, GraduationCap, HelpCircle, Home, Languages, LayoutDashboard, Menu, MessageCircle,
+  Bell, BookOpen, CalendarDays, Camera, Check, ChevronDown, ChevronRight, ClipboardList, Cloud, FileCheck2, FileText,
+  Flag, GraduationCap, HelpCircle, Home, Languages, LayoutDashboard, LockKeyhole, Mail, Menu, MessageCircle,
   Pencil, Plus, ScanLine, Search, Send, Settings, ShieldCheck, Sparkles, Sprout, Star, Upload,
   UserRound, Users, X, Zap,
 } from 'lucide-react'
@@ -318,10 +318,35 @@ function Help({ setScreen }: { setScreen: (s: Screen) => void }) {
   const [request, setRequest] = useState<{ subject: string; topic: string; message: string } | null>(null)
   const topics = helpTopics[subject]
 
-  return <>
-    <PageHeader eyebrow="Private help" title="Ask your teacher for help" description="Only you and Ms. Nadine will see this message." />
-    {request ? <Card className="success-card help-confirmation"><div className="success-mark"><Check /></div><h2>{t('Your request was sent')}</h2><p>{t('Your teacher will reply to your request.')}</p><Badge tone="warning">{t('Waiting for reply')}</Badge><div className="help-request-summary"><span>{t('Subject')}</span><strong>{t(request.subject)}</strong><span>{t('Topic')}</span><strong>{t(request.topic)}</strong>{request.message && <><span>{t('Your message')}</span><p>{request.message}</p></>}</div><Button onClick={() => setScreen('home')} icon={<Home size={16} />}>Back to home</Button></Card> : <Card className="form-card help-request-form"><p>{t('Choose a subject first, then select the topic you would like help with.')}</p><label>{t('Subject')}<select value={subject} onChange={(event) => { const nextSubject = event.target.value; setSubject(nextSubject); setTopic(helpTopics[nextSubject][0]) }}><option value="Math">{t('Math')}</option><option value="Science">{t('Science')}</option></select></label><label>{t('Topic')}<select value={topic} onChange={(event) => setTopic(event.target.value)}>{topics.map((helpTopic) => <option key={helpTopic} value={helpTopic}>{t(helpTopic)}</option>)}</select></label><label>{t('Optional message')}<textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t('Share anything that would help your teacher understand what you need.')} /></label><Button onClick={() => setRequest({ subject, topic, message: message.trim() })} icon={<Send size={16} />}>Send private request</Button></Card>}
-  </>
+  return <div className="student-help">
+    <section className="student-help-hero">
+      <span className="student-help-decoration student-help-orb" aria-hidden="true" />
+      <span className="student-help-decoration student-help-star" aria-hidden="true"><Star /></span>
+      <SynaMascot>{(cheer, nextCheer) => <div className="student-help-hero-copy">
+        <span className="student-help-eyebrow"><HelpCircle aria-hidden="true" />{t('Private help')}</span>
+        <h1>{t('Ask your teacher for help')}</h1>
+        <p className="student-help-privacy"><LockKeyhole aria-hidden="true" />{t('Only you and Ms. Nadine will see this message.')}</p>
+        <button className="student-help-cheer" type="button" onClick={nextCheer}>{cheer}</button>
+      </div>}</SynaMascot>
+    </section>
+    <div className="student-help-content">
+      {request ? <div className="student-help-success-wrap" role="status"><Card className="success-card help-confirmation student-help-success"><div className="success-mark"><Check /></div><h2>{t('Your request was sent')}</h2><p>{t('Your teacher will reply to your request.')}</p><Badge tone="warning">{t('Waiting for reply')}</Badge><div className="help-request-summary"><span>{t('Subject')}</span><strong>{t(request.subject)}</strong><span>{t('Topic')}</span><strong>{t(request.topic)}</strong>{request.message && <><span>{t('Your message')}</span><p>{request.message}</p></>}</div><Button onClick={() => setScreen('home')} icon={<Home size={16} />}>Back to home</Button><SynaMascot size="tip" decorative /></Card></div> : <Card className="form-card help-request-form student-help-form">
+        <div className="student-help-form-heading"><span className="student-help-form-icon"><MessageCircle aria-hidden="true" /></span><p>{t('Choose a subject first, then select the topic you would like help with.')}</p></div>
+        <label htmlFor="help-subject">{t('Subject')}<span className="student-help-control-wrap"><select id="help-subject" value={subject} onChange={(event) => { const nextSubject = event.target.value; setSubject(nextSubject); setTopic(helpTopics[nextSubject][0]) }}><option value="Math">{t('Math')}</option><option value="Science">{t('Science')}</option></select><ChevronDown aria-hidden="true" /></span></label>
+        <label htmlFor="help-topic">{t('Topic')}<span className="student-help-control-wrap"><select id="help-topic" value={topic} onChange={(event) => setTopic(event.target.value)}>{topics.map((helpTopic) => <option key={helpTopic} value={helpTopic}>{t(helpTopic)}</option>)}</select><ChevronDown aria-hidden="true" /></span></label>
+        <label htmlFor="help-message">{t('Optional message')}<textarea id="help-message" value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t('Share anything that would help your teacher understand what you need.')} /></label>
+        <div className="student-help-divider" aria-hidden="true" />
+        <Button onClick={() => setRequest({ subject, topic, message: message.trim() })} icon={<Send size={18} aria-hidden="true" />}>Send private request</Button>
+      </Card>}
+      <aside className="student-help-art" aria-hidden="true">
+        <span className="student-help-art-orb" />
+        <span className="student-help-art-star student-help-art-star-one"><Star /></span>
+        <span className="student-help-art-star student-help-art-star-two"><Star /></span>
+        <span className="student-help-art-cloud"><Cloud /></span>
+        <span className="student-help-art-mascot"><SynaMascot size="hero" decorative /><Mail aria-hidden="true" /></span>
+      </aside>
+    </div>
+  </div>
 }
 
 function LegacyTeacherDashboard({ setScreen }: { setScreen: (s: Screen) => void }) { const [className, setClassName] = useState('Class 4B'); const classes = className === 'Class 4B' ? { uploaded: '18', total: '24', text: '6', grades: '12' } : { uploaded: '24', total: '25', text: '9', grades: '6' }; return <><PageHeader eyebrow="Teacher dashboard" title="Good morning, Ms. Nadine" description={`${className} · Math · October 2026`} action={<Button onClick={() => setScreen('create')} icon={<Plus size={17} />}>Create exam</Button>} /><div className="button-row" role="group" aria-label="Choose class"><Button variant={className === 'Class 4A' ? 'secondary' : 'outline'} onClick={() => setClassName('Class 4A')}>Class 4A</Button><Button variant={className === 'Class 4B' ? 'secondary' : 'outline'} onClick={() => setClassName('Class 4B')}>Class 4B</Button></div><div className="stat-grid"><Card className="stat-card"><Upload size={19} /><strong>{className === 'Class 4B' ? 18 : 24}</strong><span>Papers uploaded</span><small>of {classes.total}</small></Card><Card className="stat-card"><ScanLine size={19} /><strong>{classes.text}</strong><span>Text to check</span><small>needs review</small></Card><Card className="stat-card"><FileCheck2 size={19} /><strong>{classes.grades}</strong><span>Grades to confirm</span><small>AI suggestions ready</small></Card><Card className="stat-card"><Check size={19} /><strong>2</strong><span>Released</span><small>this term</small></Card></div><div className="two-col teacher-cols"><Card><div className="card-title"><h2>Your exams</h2><Badge tone="neutral">{className}</Badge></div><div className="teacher-exam"><div className="exam-head"><div><strong>Math Quiz 3: Fractions</strong><p>{className} · Oct 18, 2026 · English</p></div><Badge tone="warning">In progress</Badge></div><StatusTracker current={1} /><div className="exam-counters"><span><b>{classes.uploaded}</b> uploaded</span><span><b>{classes.text}</b> text check</span><span><b>{classes.grades}</b> grade check</span></div><div className="button-row"><Button variant="secondary" onClick={() => setScreen('verify')} icon={<ScanLine size={16} />}>Verify text</Button><Button variant="outline" onClick={() => setScreen('grades')} icon={<FileCheck2 size={16} />}>Confirm grades</Button></div></div><div className="teacher-exam muted-exam"><div className="exam-head"><div><strong>Math Quiz 2: Fractions</strong><p>{className} · Oct 12, 2026 · English</p></div><Badge tone="success">Released</Badge></div><StatusTracker current={3} /></div></Card><div className="stack"><Card><div className="card-title"><h2>Needs your attention</h2><Badge tone="danger">4 open</Badge></div><div className="attention-row" onClick={() => setScreen('gaps')} role="button" tabIndex={0}><Flag size={17} /><div><strong>3 red flags to review</strong><p>Repeated comparing fractions gap</p></div><ChevronRight /></div><div className="attention-row" onClick={() => setScreen('help')} role="button" tabIndex={0}><MessageCircle size={17} /><div><strong>1 help request</strong><p>Malak Adel · Comparing fractions</p></div><ChevronRight /></div></Card><Card><div className="card-title"><h2>AI agreement rate</h2><Badge tone="success">This term</Badge></div><div className="agreement"><strong>86%</strong><div className="bar"><span style={{ width: '86%' }} /></div><p>Confirmed without changing</p></div></Card></div></div></> }

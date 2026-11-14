@@ -314,6 +314,71 @@ body .teacher-workspace :is(small,.tw-status-line){font-size:11px;line-height:1.
 .upload-exam-copy>small svg{width:17px;height:17px;flex:none}
 .upload-language-chip{display:inline-flex;width:max-content;max-width:100%;align-items:center;gap:6px;padding:5px 9px;border:1px solid #cbd1f6;border-radius:999px;background:#f5f6ff;color:#34318f;font-size:14px;font-weight:900;overflow-wrap:anywhere}
 .upload-language-chip svg{width:16px;height:16px;flex:none}
+
+/* Private student help request page. */
+.student-help{--help-ink:#1E2250;--help-page:#F4F6FF;--help-indigo:#4F46E5;--help-mint:#4FD8A8;--help-sky:#CBE7FF;display:grid;width:100%;max-width:1240px;gap:24px;margin:0 auto;color:var(--help-ink);font-family:var(--font-nunito),Nunito,sans-serif;font-size:16px}
+.student-help h1,.student-help h2,.student-help button{font-family:var(--font-fredoka),Fredoka,sans-serif}
+.student-help h1,.student-help h2,.student-help p{margin-top:0}
+.student-help :is(button,a,select,textarea):focus-visible{outline:4px solid rgba(79,70,229,.3);outline-offset:3px}
+.student-help-hero{position:relative;isolation:isolate;display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:24px;min-height:190px;overflow:hidden;padding:26px 36px;border-radius:32px;background:#DCEBFF}
+.student-help-hero .syna-mascot-hero{width:130px;height:130px}
+.student-help-hero-copy{position:relative;z-index:1;display:grid;justify-items:start;gap:8px;min-width:0}
+.student-help-eyebrow{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:5px 13px;border:2px solid #1E2250;border-radius:999px;background:#fff;color:#1E2250;font-size:16px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+.student-help-eyebrow svg{width:17px;height:17px;flex:none}
+.student-help-hero h1{margin:0;color:#1E2250;font-size:clamp(32px,4vw,42px);font-weight:700;line-height:1.08;letter-spacing:-.6px}
+.student-help-privacy{display:inline-flex;align-items:center;gap:9px;min-height:42px;margin:4px 0 0;padding:7px 16px;border:2px solid #1E2250;border-radius:999px;background:#fff;color:#1E2250;font-size:18px;font-weight:800;line-height:1.25}
+.student-help-privacy svg{width:18px;height:18px;flex:none}
+.student-help-cheer{max-width:100%;padding:0;border:0;background:transparent;color:#4A4F7A;font-family:var(--font-nunito),Nunito,sans-serif!important;font-size:16px;font-weight:800;cursor:pointer}
+.student-help-decoration{position:absolute;z-index:-1;pointer-events:none}
+.student-help-orb{right:-30px;bottom:-95px;width:255px;height:255px;border-radius:50%;background:#CBE7FF;opacity:.82}
+.student-help-star{top:20px;right:10%;color:#1E2250}
+.student-help-star svg{width:30px;height:30px;fill:#FFC933;stroke-width:2.5}
+.student-help-content{display:grid;grid-template-columns:minmax(0,760px) minmax(280px,1fr);align-items:stretch;gap:24px}
+.student-help-form{display:grid;align-content:start;gap:24px;min-width:0;margin:0;padding:32px;border:2px solid #DDE2F7;border-radius:32px;background:#fff;box-shadow:0 4px 0 #DDE2F7;animation:pop .45s cubic-bezier(.3,1.6,.5,1) both}
+.student-help-form-heading{display:flex;align-items:center;gap:16px}
+.student-help-form-heading p{margin:0;color:#3A3F6B;font-size:18px;font-weight:700;line-height:1.45}
+.student-help-form-icon{display:grid;place-items:center;flex:none;width:56px;height:56px;border:3px solid #1E2250;border-radius:18px;background:#CBE7FF;color:#1E2250}
+.student-help-form-icon svg{width:27px;height:27px;stroke-width:2.3}
+.student-help-form>label{display:grid;gap:8px;color:#1E2250;font-family:var(--font-fredoka),Fredoka,sans-serif;font-size:20px;font-weight:600;line-height:1.2}
+.student-help-control-wrap{position:relative;display:block}
+.student-help-control-wrap select,.student-help-form textarea{width:100%;min-height:60px;padding:0 48px 0 18px;border:3px solid #DDE2F7;border-radius:20px;background:#fff;color:#1E2250;font-family:var(--font-nunito),Nunito,sans-serif;font-size:18px;font-weight:800;transition:border-color .15s,box-shadow .15s}
+.student-help-control-wrap select{appearance:none;cursor:pointer}
+.student-help-control-wrap>svg{position:absolute;top:50%;right:18px;width:20px;height:20px;transform:translateY(-50%);pointer-events:none}
+.student-help-control-wrap select:hover,.student-help-form textarea:hover{border-color:#1E2250}
+.student-help-control-wrap select:focus-visible,.student-help-form textarea:focus-visible{border-color:#4F46E5;box-shadow:0 0 0 4px rgba(79,70,229,.25)}
+.student-help-control-wrap select:disabled{border-color:#DDE2F7;background:#F4F6FF;color:#4A4F7A;cursor:not-allowed}
+.student-help-form textarea{min-height:160px;padding:16px 18px;resize:vertical;line-height:1.5}
+.student-help-form textarea::placeholder{color:#4A4F7A;opacity:1}
+.student-help-divider{height:2px;background:#DDE2F7}
+.student-help-form>.button{display:inline-flex;min-height:56px;align-items:center;justify-content:center;gap:10px;width:max-content;padding:0 28px;border:3px solid #1E2250;border-radius:999px;background:#4F46E5;color:#fff;font-size:19px;font-weight:600;box-shadow:0 4px 0 #1E2250;transition:transform .15s,box-shadow .15s}
+.student-help-form>.button:hover{transform:translateY(-2px);box-shadow:0 6px 0 #1E2250}
+.student-help-form>.button:active{transform:translateY(2px);box-shadow:0 2px 0 #1E2250}
+.student-help-form>.button:disabled{border-color:#B8BCE6;background:#E4E6FA;color:#4A4F7A;box-shadow:none;cursor:not-allowed}
+.student-help-art{position:relative;isolation:isolate;display:grid;min-height:100%;place-items:center;overflow:hidden;border:2px solid #CBE7FF;border-radius:32px;background:#EAF5FF}
+.student-help-art-orb{position:absolute;z-index:-1;top:50%;left:50%;width:min(78%,300px);aspect-ratio:1;border-radius:50%;background:#CBE7FF;transform:translate(-50%,-50%)}
+.student-help-art-mascot{position:relative;display:grid;place-items:center}
+.student-help-art-mascot .syna-mascot-hero{width:200px;height:200px}
+.student-help-art-mascot>svg{position:absolute;right:-4px;bottom:19px;width:68px;height:54px;padding:11px;border:3px solid #1E2250;border-radius:14px;background:#fff;color:#4F46E5;stroke-width:2.4;transform:rotate(-8deg)}
+.student-help-art-star{position:absolute;color:#1E2250}
+.student-help-art-star svg{width:28px;height:28px;fill:#FFC933;stroke-width:2.5}
+.student-help-art-star-one{top:18%;right:16%;transform:rotate(10deg)}
+.student-help-art-star-two{bottom:18%;left:15%;transform:rotate(-12deg) scale(.7)}
+.student-help-art-cloud{position:absolute;top:24%;left:13%;color:#fff}
+.student-help-art-cloud svg{width:44px;height:44px;fill:#fff;stroke:#CBE7FF;stroke-width:2}
+.student-help-success-wrap{min-width:0;animation:pop .45s cubic-bezier(.3,1.6,.5,1) both}
+.student-help-success{position:relative;display:grid;justify-items:start;gap:16px;min-height:100%;margin:0;padding:32px 32px 140px;border:2px solid #4FD8A8;border-radius:32px;background:#D3F4E6;box-shadow:0 4px 0 #DDE2F7;color:#1E2250}
+.student-help-success .success-mark{display:grid;place-items:center;width:56px;height:56px;border:2px solid #1E2250;border-radius:50%;background:#4FD8A8;color:#1E2250}
+.student-help-success .success-mark svg{width:30px;height:30px;stroke-width:3}
+.student-help-success h2{margin:0;font-size:30px;font-weight:700}
+.student-help-success>p{margin:0;color:#3A3F6B;font-size:18px;font-weight:700}
+.student-help-success .syna-mascot-tip{position:absolute;right:20px;bottom:12px;width:124px;height:124px;animation:bob 3.2s ease-in-out infinite,pop .45s cubic-bezier(.3,1.6,.5,1) both}
+.student-help-success .help-request-summary{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;width:100%;padding:16px;border-radius:20px;background:#fff;color:#1E2250}
+.student-help-success .help-request-summary span{color:#4A4F7A;font-size:16px;font-weight:800}
+.student-help-success .help-request-summary p{grid-column:1/-1;margin:0;font-weight:700}
+.student-help-success>.button{min-height:48px;padding:8px 18px;border:2px solid #1E2250;border-radius:999px;background:#fff;color:#1E2250;box-shadow:0 3px 0 #1E2250}
+@media(max-width:1099px){.student-help-content{grid-template-columns:minmax(0,1fr)}.student-help-art{display:none}}
+@media(max-width:639px){.student-help{gap:18px}.student-help-hero{grid-template-columns:84px minmax(0,1fr);gap:14px;min-height:0;padding:18px;border-radius:24px}.student-help-hero .syna-mascot-hero{width:84px;height:84px}.student-help-hero-copy{gap:7px}.student-help-eyebrow{min-height:30px;padding:4px 9px;font-size:16px}.student-help-eyebrow svg{width:15px;height:15px}.student-help-hero h1{font-size:clamp(26px,7vw,30px)}.student-help-privacy{gap:6px;min-height:36px;margin-top:2px;padding:6px 10px;font-size:16px}.student-help-privacy svg{width:16px;height:16px}.student-help-cheer{font-size:16px}.student-help-star{top:10px;right:8%}.student-help-star svg{width:22px;height:22px}.student-help-form{gap:20px;padding:20px;border-radius:26px}.student-help-form-heading{align-items:flex-start;flex-direction:column;gap:12px}.student-help-form-heading p{font-size:17px}.student-help-form>label{font-size:19px}.student-help-form>.button{width:100%;min-height:56px;padding:0 16px}.student-help-success{padding:24px 20px 132px;border-radius:26px}.student-help-success .syna-mascot-tip{right:12px;width:112px;height:112px}}
+@media(prefers-reduced-motion:reduce){.student-help *, .student-help *::before,.student-help *::after{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
 .upload-exam-choice{display:flex;min-width:92px;flex-direction:column;align-items:center;gap:4px;color:#392fe0;font-size:14px;font-weight:1000}
 .upload-radio{display:grid;place-items:center;width:30px;height:30px;border:3px solid #747a9d;border-radius:50%;background:#fff}
 .upload-radio.selected{border-color:#4f46e5;background:#4f46e5;color:#fff}
