@@ -11,8 +11,9 @@
  * `t-` class prefix so they never collide with the student/parent styles.
  */
 
-import { useEffect, useId, useRef } from 'react'
-import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, CircleAlert, CircleCheck, Clock3, Flag, Info, Loader2, TriangleAlert, X } from 'lucide-react'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -41,7 +42,12 @@ export const stateTone = (state: string): Tone =>
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
-export function Button({ children, onClick, variant = 'primary', size = 'md', disabled = false, type = 'button', icon, ariaLabel, block = false }: {
+/**
+ * Sticker button. `state="loading"` shows a spinner + progressive verb and
+ * cannot be pressed twice; `state="done"` is a finished, non-clickable state
+ * (a completed action never leaves the same active button).
+ */
+export function Button({ children, onClick, variant = 'primary', size = 'md', disabled = false, type = 'button', icon, ariaLabel, block = false, state, busyLabel, trailingIcon }: {
   children?: React.ReactNode
   onClick?: () => void
   variant?: ButtonVariant
@@ -51,9 +57,16 @@ export function Button({ children, onClick, variant = 'primary', size = 'md', di
   icon?: React.ReactNode
   ariaLabel?: string
   block?: boolean
+  state?: 'loading' | 'done'
+  busyLabel?: string
+  trailingIcon?: React.ReactNode
 }) {
-  return <button type={type} className={cx('t-btn', `t-btn-${variant}`, size === 'sm' && 't-btn-sm', block && 't-btn-block', !children && 't-btn-icon')} onClick={onClick} disabled={disabled} aria-label={ariaLabel}>
-    {icon}{children}
+  const loading = state === 'loading'
+  const done = state === 'done'
+  return <button type={type} className={cx('t-btn', done ? 't-btn-done' : `t-btn-${variant}`, size === 'sm' && 't-btn-sm', block && 't-btn-block', !children && 't-btn-icon', loading && 'is-loading')} onClick={loading || done ? undefined : onClick} disabled={disabled || loading || done} aria-disabled={done || undefined} aria-busy={loading || undefined} aria-label={ariaLabel} title={!children ? ariaLabel : undefined}>
+    {loading ? <Loader2 className="t-spin" size={18} aria-hidden="true" /> : done ? <Check size={18} strokeWidth={2.6} aria-hidden="true" /> : icon}
+    {loading && busyLabel ? busyLabel : children}
+    {!loading && !done && trailingIcon && <span className="t-btn-trailing" aria-hidden="true">{trailingIcon}</span>}
   </button>
 }
 
@@ -64,8 +77,17 @@ export function LinkButton({ children, onClick }: { children: React.ReactNode; o
 
 /* ----------------------------------------------------------------- display */
 
-export function Badge({ children, tone = 'neutral', dot = false }: { children: React.ReactNode; tone?: Tone; dot?: boolean }) {
-  return <span className={cx('t-badge', `t-badge-${tone}`)}>{dot && <i aria-hidden="true" />}{children}</span>
+/** Default status icon per tone, so colour is never the only signal. */
+const toneIcon: Partial<Record<Tone, React.ReactNode>> = {
+  success: <Check size={15} strokeWidth={2.8} />,
+  warning: <Clock3 size={15} strokeWidth={2.6} />,
+  danger: <Flag size={15} strokeWidth={2.6} />,
+}
+
+/** Status/count chip. Success, warning and danger chips always carry an icon; `icon` overrides it, `icon={false}` removes it. */
+export function Badge({ children, tone = 'neutral', dot = false, icon }: { children: React.ReactNode; tone?: Tone; dot?: boolean; icon?: React.ReactNode | false }) {
+  const shown = icon === false ? null : icon ?? toneIcon[tone] ?? (dot ? <i /> : null)
+  return <span className={cx('t-badge', `t-badge-${tone}`)}>{shown && <span className="t-badge-icon" aria-hidden="true">{shown}</span>}{children}</span>
 }
 
 export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 'lg' }) {
@@ -149,7 +171,7 @@ export function TextArea({ label, value, onChange, rows = 3, required = false, h
 export function SelectField({ label, value, options, onChange, hint, error, required = false, hideLabel = false, id: fixedId, onBlur }: FieldProps & { value: string; options: Array<string | { value: string; label: string }>; onChange: (value: string) => void; hideLabel?: boolean }) {
   const autoId = useId(); const id = fixedId ?? autoId
   const select = <select id={id} className="t-input t-select" value={value} aria-label={hideLabel ? label : undefined} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={hideLabel ? undefined : describedBy(id, hint, error)} onBlur={onBlur} onChange={(event) => onChange(event.target.value)}>
-    {options.map((option) => typeof option === 'string' ? <option key={option}>{option}</option> : <option key={option.value} value={option.value}>{option.label}</option>)}
+    {options.map((option) => typeof option === 'string' ? <option key={option} value={option}>{option}</option> : <option key={option.value} value={option.value}>{option.label}</option>)}
   </select>
   return hideLabel ? select : <FieldShell label={label} hint={hint} error={error} required={required} htmlFor={id}>{select}</FieldShell>
 }
@@ -191,10 +213,12 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
 }
 
 /** Horizontal tabs (question tabs). */
-export function Tabs<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: Array<{ value: T; label: React.ReactNode; meta?: React.ReactNode }>; onChange: (value: T) => void }) {
+export function Tabs<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: Array<{ value: T; label: React.ReactNode; meta?: React.ReactNode; progress?: number; state?: 'done' | 'todo' }>; onChange: (value: T) => void }) {
   return <div className="t-tabs" role="tablist" aria-label={label}>
-    {options.map((option) => <button type="button" role="tab" key={String(option.value)} aria-selected={value === option.value} className={value === option.value ? 'is-active' : ''} onClick={() => onChange(option.value)}>
-      <span>{option.label}</span>{option.meta && <small>{option.meta}</small>}
+    {options.map((option) => <button type="button" role="tab" key={String(option.value)} aria-selected={value === option.value} className={cx(value === option.value && 'is-active', option.progress !== undefined && 't-tab-card')} onClick={() => onChange(option.value)}>
+      <span className="t-tab-title">{option.state && <span className={`t-tab-state is-${option.state}`} aria-hidden="true">{option.state === 'done' ? <Check size={15} strokeWidth={2.8} /> : <Clock3 size={15} strokeWidth={2.6} />}</span>}{option.label}{option.state && <span className="t-sr-only"> · {option.state === 'done' ? 'done' : 'to check'}</span>}</span>
+      {option.meta && <small>{option.meta}{option.progress !== undefined && <b>{Math.round(option.progress)}%</b>}</small>}
+      {option.progress !== undefined && <span className="t-tab-progress" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(100, option.progress))}%` }} /></span>}
     </button>)}
   </div>
 }
@@ -210,34 +234,70 @@ export function ListItem({ title, subtitle, leading, trailing, active = false, o
 /* --------------------------------------------------------------- overlays */
 
 /**
- * Modal dialog: focuses the first control on open, closes on Escape or a
- * backdrop click, and returns focus to the trigger on close (Nielsen #3 —
- * user control and freedom).
+ * Modal / confirm dialog. Rendered into the teacher root so the page behind
+ * can be made inert; focus moves into the dialog (Cancel or the first field),
+ * Tab is trapped, Escape / X / backdrop close it (not while `busy`), and focus
+ * returns to the opener on close.
  */
-export function Modal({ title, description, children, onClose, footer }: { title: string; description?: React.ReactNode; children?: React.ReactNode; onClose: () => void; footer: React.ReactNode }) {
+export function Modal({ title, description, children, onClose, footer, icon, tone = 'lavender', busy = false }: { title: string; description?: React.ReactNode; children?: React.ReactNode; onClose: () => void; footer: React.ReactNode; icon?: React.ReactNode; tone?: 'sun' | 'lavender' | 'coral' | 'mint' | 'sky'; busy?: boolean }) {
   const dialogRef = useRef<HTMLElement>(null)
   const titleId = useId()
-  // Keep the latest onClose without re-running the mount effect: parents pass
+  const descriptionId = useId()
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  // Keep the latest onClose/busy without re-running the mount effect: parents pass
   // inline callbacks, and re-running would steal focus while the user types.
   const closeRef = useRef(onClose)
   closeRef.current = onClose
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  // The opener is recorded before the page goes inert (inert blurs it).
+  const openerRef = useRef<HTMLElement | null>(null)
+  const requestClose = () => { if (!busyRef.current) closeRef.current() }
+
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    const focusable = dialogRef.current?.querySelector<HTMLElement>('textarea, input, select, button:not([data-close])')
+    openerRef.current = document.activeElement as HTMLElement | null
+    const root = document.querySelector<HTMLElement>('.tch') ?? document.body
+    const el = document.createElement('div')
+    el.className = 't-modal-host'
+    root.appendChild(el)
+    // Everything else in the teacher view becomes inert while the dialog is open.
+    const others = [...root.children].filter((child) => child !== el) as HTMLElement[]
+    others.forEach((child) => child.setAttribute('inert', ''))
+    setHost(el)
+    return () => { others.forEach((child) => child.removeAttribute('inert')); el.remove() }
+  }, [])
+
+  useEffect(() => {
+    if (!host) return
+    const previous = openerRef.current
+    const focusable = dialogRef.current?.querySelector<HTMLElement>('textarea, input, select, .t-modal-footer button, button:not([data-close])')
     focusable?.focus()
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current() }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { requestClose(); return }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const items = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [href]')]
+      if (!items.length) return
+      const first = items[0], last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
     window.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; previous?.focus() }
-  }, [])
-  return <div className="t-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <section ref={dialogRef} className="t-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <header className="t-modal-header"><h2 id={titleId}>{title}</h2><button type="button" data-close className="t-icon-btn" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></header>
-      {description && <p className="t-modal-description">{description}</p>}
-      {children}
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; window.setTimeout(() => previous?.focus(), 0) }
+  }, [host]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!host) return null
+  return createPortal(<div className="t-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose() }}>
+    <section ref={dialogRef} className="t-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} aria-busy={busy || undefined}>
+      <header className="t-modal-header">
+        {icon && <span className={cx('t-modal-icon', `ts-tile-${tone}`)} aria-hidden="true">{icon}</span>}
+        <div className="t-modal-heading"><h2 id={titleId}>{title}</h2>{description && <p id={descriptionId} className="t-modal-description">{description}</p>}</div>
+        <button type="button" data-close className="t-modal-close" aria-label="Close" disabled={busy} onClick={requestClose}><X size={20} strokeWidth={2.6} /></button>
+      </header>
+      {children && <div className="t-modal-body">{children}</div>}
       <footer className="t-modal-footer">{footer}</footer>
     </section>
-  </div>
+  </div>, host)
 }
 
 /** Transient confirmation message (Nielsen #1 — visibility of system status). */

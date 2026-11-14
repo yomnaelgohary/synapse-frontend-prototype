@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, LayoutDashboard, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Ban, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FilePlus, FileText, Flag, GraduationCap, Home, Inbox, Languages, LayoutDashboard, Lock, Meh, MessageSquare, Pencil, Plus, RotateCcw, ScanLine, Send, Smile, Sparkles, StickyNote, Target, Trash2, Upload, UserRound, Users, X } from 'lucide-react'
 import { TeacherShell } from '@/components/teacher/TeacherShell'
-import type { TeacherChrome } from '@/components/teacher/TeacherHeader'
+import type { TeacherChrome, TeacherNotification } from '@/components/teacher/TeacherHeader'
 import { PageHeader } from '@/components/teacher/PageHeader'
 import { WorkflowStepper } from '@/components/teacher/WorkflowStepper'
 import { OcrEditor, ScanView, ocrTokens, unsureRemaining } from '@/components/teacher/ocr'
 import * as S from '@/components/teacher/sticker'
+import { Banner, useActionFeedback } from '@/components/teacher/feedback'
 import type { SynaMascotComponent } from '@/components/teacher/sticker'
 import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, ErrorSummary, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, initials, stateTone } from '@/components/teacher/ui'
 
@@ -135,22 +136,55 @@ function useTeacherData() {
 export function TeacherWorkspace({ screen, setScreen, chrome, SynaMascot }: { screen: string; setScreen: (screen: string) => void; chrome?: TeacherChrome; SynaMascot?: SynaMascotComponent }) {
   const [data, setData] = useTeacherData()
   const [selectedExam, setSelectedExam] = useState('quiz-3')
-  const [notice, setNotice] = useState('')
-  const exam = data.exams.find((item) => item.id === selectedExam) ?? data.exams[0]
-  const update = (transform: (current: Data) => Data) => setData(transform)
-  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 3600) }
   const go = (next: Screen) => setScreen(next)
   const newHelp = data.help.filter((item) => item.status === 'New').length
-  return <TeacherShell screen={screen} onNavigate={go} helpCount={newHelp} chrome={chrome} toast={notice} onDismissToast={() => setNotice('')}>
+  // Exam created in this session: Exams shows a success banner and highlights its row.
+  // Kept here because the screen components remount on every navigation.
+  const [createdId, setCreatedId] = useState('')
+  const newestId = data.exams[0]?.id ?? ''
+  const knownIds = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!knownIds.current) { knownIds.current = new Set(data.exams.map((item) => item.id)); return }
+    if (newestId && !knownIds.current.has(newestId)) { knownIds.current.add(newestId); setCreatedId(newestId) }
+  }, [newestId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (screen === 'create') setCreatedId('') }, [screen])
+  // Notifications for the bell, built from the existing data (read-only).
+  const openExam = (id: string, next: Screen) => { setSelectedExam(id); go(next) }
+  const notifications: TeacherNotification[] = [
+    ...data.help.filter((item) => item.status === 'New').map((item) => ({ id: `help-${item.id}`, kind: 'help' as const, title: 'New help request', message: `${person(item.studentId).name} · ${item.topic}`, onOpen: () => go('help') })),
+    ...data.flags.filter((item) => item.status === 'Pending').map((item) => ({ id: `flag-${item.id}`, kind: 'flag' as const, title: 'Red flag to review', message: `${person(item.studentId).name} · ${item.skill}`, onOpen: () => go('gaps') })),
+    ...data.exams.flatMap((item) => {
+      const rows = data.answers.filter((answer) => answer.examId === item.id)
+      const textPapers = new Set(rows.filter((answer) => !answer.verified && !answer.unreadable).map((answer) => answer.studentId)).size
+      const gradePapers = new Set(rows.filter((answer) => answer.verified && !answer.confirmed).map((answer) => answer.studentId)).size
+      return [
+        ...(textPapers ? [{ id: `text-${item.id}`, kind: 'text' as const, title: 'Papers need a text check', message: `${item.title} · ${textPapers} ${textPapers === 1 ? 'paper' : 'papers'}`, onOpen: () => openExam(item.id, 'verify') }] : []),
+        ...(gradePapers && !item.released ? [{ id: `grades-${item.id}`, kind: 'grades' as const, title: 'AI suggestions ready', message: `${item.title} · ${gradePapers} ${gradePapers === 1 ? 'paper' : 'papers'}`, onOpen: () => openExam(item.id, 'grades') }] : []),
+      ]
+    }),
+  ]
+  // The shell hosts the ActionFeedbackProvider; screens get notify/confirm from it.
+  return <TeacherShell screen={screen} onNavigate={go} helpCount={newHelp} chrome={chrome} notifications={notifications}>
+    <WorkspaceScreens screen={screen} go={go} data={data} setData={setData} selectedExam={selectedExam} setSelectedExam={setSelectedExam} SynaMascot={SynaMascot} createdId={createdId} />
+  </TeacherShell>
+}
+
+/** Renders the current screen with the shared toast (notify) from the feedback layer. */
+function WorkspaceScreens({ screen, go, data, setData, selectedExam, setSelectedExam, SynaMascot, createdId }: { screen: string; go: (next: Screen) => void; data: Data; setData: React.Dispatch<React.SetStateAction<Data>>; selectedExam: string; setSelectedExam: (id: string) => void; SynaMascot?: SynaMascotComponent; createdId: string }) {
+  const feedback = useActionFeedback()
+  const exam = data.exams.find((item) => item.id === selectedExam) ?? data.exams[0]
+  const update = (transform: (current: Data) => Data) => setData(transform)
+  const notify = (message: string) => feedback.notify(message)
+  return <>
     {screen === 'dashboard' && <Dashboard data={data} setScreen={go} setExam={(id) => { setSelectedExam(id); go('exams') }} Mascot={SynaMascot} />}
-    {screen === 'exams' && <ExamList data={data} setScreen={go} setExam={setSelectedExam} />}
+    {screen === 'exams' && <ExamList data={data} setScreen={go} setExam={setSelectedExam} Mascot={SynaMascot} createdId={createdId} />}
     {screen === 'create' && <CreateExam data={data} update={update} setScreen={go} notify={notify} />}
     {screen === 'verify' && <VerifyText exam={exam} exams={data.exams} answers={data.answers} update={update} setScreen={go} notify={notify} setExam={setSelectedExam} />}
     {screen === 'grades' && <GradeReview exam={exam} answers={data.answers} data={data} update={update} setScreen={go} notify={notify} setExam={setSelectedExam} />}
-    {screen === 'gaps' && <LearningGaps data={data} update={update} setScreen={go} notify={notify} />}
+    {screen === 'gaps' && <LearningGaps data={data} update={update} setScreen={go} notify={notify} Mascot={SynaMascot} />}
     {screen === 'profile' && <StudentProfile data={data} update={update} setScreen={go} notify={notify} />}
     {screen === 'help' && <HelpInbox data={data} update={update} setScreen={go} notify={notify} />}
-  </TeacherShell>
+  </>
 }
 
 /** Breadcrumb root shared by every exam sub-page. */
@@ -176,7 +210,7 @@ function Dashboard({ data, setScreen, setExam, Mascot }: { data: Data; setScreen
       controls={<>
         {/* Existing uncontrolled class selector, restyled only. */}
         <label className="ts-select-label" htmlFor="dashboard-class">Class</label>
-        <span className="ts-select"><select id="dashboard-class" defaultValue="Class 4B"><option>Class 4B</option><option>Class 4A</option></select><ChevronDown size={20} strokeWidth={2.6} aria-hidden="true" /></span>
+        <span className="ts-select"><select id="dashboard-class" defaultValue="Class 4B"><option value="Class 4B">Class 4B</option><option value="Class 4A">Class 4A</option><option value="Class 1A">Class 1A</option></select><ChevronDown size={20} strokeWidth={2.6} aria-hidden="true" /></span>
         <S.InfoPill icon={<GraduationCap size={18} strokeWidth={2.4} />}>Grade 4 · 24 students</S.InfoPill>
         <S.InfoPill icon={<Languages size={18} strokeWidth={2.4} />}>English and German</S.InfoPill>
       </>}
@@ -234,26 +268,29 @@ function Dashboard({ data, setScreen, setExam, Mascot }: { data: Data; setScreen
  * Exams list — one table, one "next step" action per exam.
  * ========================================================================== */
 
-function ExamList({ data, setScreen, setExam }: { data: Data; setScreen: (screen: Screen) => void; setExam: (id: string) => void }) {
+function ExamList({ data, setScreen, setExam, Mascot, createdId = '' }: { data: Data; setScreen: (screen: Screen) => void; setExam: (id: string) => void; Mascot?: SynaMascotComponent; createdId?: string }) {
+  const created = data.exams.find((item) => item.id === createdId)
   return <>
-    <PageHeader title="Exams and papers" description="Follow every assessment from upload through release." actions={<Button icon={<Plus size={16} />} onClick={() => setScreen('create')}>Create exam</Button>} />
-    <Card padded={false}>
+    <S.PageHero tone="sun" Mascot={Mascot} eyebrow="Exams" eyebrowIcon={<FileText size={18} strokeWidth={2.4} />} title="Exams and papers" helper="Follow every assessment from upload through release."
+      action={<S.StickerButton icon={<Plus size={20} strokeWidth={2.6} />} onClick={() => setScreen('create')}>Create exam</S.StickerButton>} />
+    {created && <Banner tone="ok" title={`“${created.title}” saved for ${created.className}. It is ready for student uploads.`} action={<Button variant="secondary" trailingIcon={<ArrowRight size={18} />} onClick={() => { setExam(created.id); setScreen(created.status === 'Text verification' ? 'verify' : 'grades') }}>Open exam</Button>}>Step 1 of the workflow (Uploaded) is ready.</Banner>}
+    <section className="ts-section ts-table-card">
       <div className="t-table-wrap">
-        <table className="t-table">
+        <table className="t-table ts-exam-table">
           <thead><tr><th scope="col">Exam</th><th scope="col">Class · date</th><th scope="col">Workflow status</th><th scope="col">Papers</th><th scope="col"><span className="t-sr-only">Next step</span></th></tr></thead>
           <tbody>{data.exams.map((exam) => {
             const count = exam.id === 'quiz-3' ? 6 : Math.max(0, Math.ceil(data.answers.filter((answer) => answer.examId === exam.id).length / 3))
-            return <tr key={exam.id}>
-              <td data-label="Exam"><strong>{exam.title}</strong><small>{exam.subject} · {exam.language}</small></td>
-              <td data-label="Class · date">{exam.className}<small>{formatDate(exam.date)}</small></td>
-              <td data-label="Status"><Badge tone={exam.released ? 'success' : 'warning'} dot>{exam.status}</Badge></td>
-              <td data-label="Papers">{count} uploaded</td>
-              <td className="t-cell-action"><Button variant="secondary" size="sm" onClick={() => { setExam(exam.id); setScreen(exam.status === 'Text verification' ? 'verify' : 'grades') }}>Review <ArrowRight size={14} /></Button></td>
+            return <tr key={exam.id} className={exam.id === createdId ? 'is-new' : undefined}>
+              <td data-label="Exam"><div className="ts-exam-cell"><span className="ts-doc-tile" aria-hidden="true"><FileText size={24} strokeWidth={2.4} /></span><div><strong>{exam.title}</strong><small>{exam.subject} · {exam.language}</small></div></div></td>
+              <td data-label="Class · date"><strong className="ts-cell-strong">{exam.className}</strong><small>{formatDate(exam.date)}</small></td>
+              <td data-label="Workflow status"><div className="ts-status-cell"><S.StatusChip status={exam.status} /><S.StageDots status={exam.status} /></div></td>
+              <td data-label="Papers"><S.MetaPill value={count} label="uploaded" /></td>
+              <td className="t-cell-action"><S.StickerButton variant="secondary" size="sm" trailingIcon={<ArrowRight size={18} strokeWidth={2.6} />} ariaLabel={`Review ${exam.title}`} onClick={() => { setExam(exam.id); setScreen(exam.status === 'Text verification' ? 'verify' : 'grades') }}>Review</S.StickerButton></td>
             </tr>
           })}</tbody>
         </table>
       </div>
-    </Card>
+    </section>
   </>
 }
 
@@ -271,9 +308,13 @@ const MAX_MARKS = 100
 type QuestionRow = { question: string; marks: string; skill: string }
 
 function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
+  const feedback = useActionFeedback()
   const [title, setTitle] = useState(''); const [subject, setSubject] = useState('Math'); const [className, setClassName] = useState('Class 4B'); const [language, setLanguage] = useState<'English' | 'German'>('English'); const [date, setDate] = useState('2026-11-20'); const [modelFile, setModelFile] = useState(''); const [modelText, setModelText] = useState(''); const [sureCheck, setSureCheck] = useState(true)
-  // Face icons are designed for Grades 1–2; both classes here are Grade 4, so they start off.
+  // Face icons are designed for Grades 1–2: Class 4A/4B are Grade 4 (off by default),
+  // the demo Class 1A is Grade 1, so faces are required there and cannot be turned off.
   const [faces, setFaces] = useState(false)
+  const youngClass = /^Class [12]/.test(className)
+  const showFaces = sureCheck && (faces || youngClass)
   const [rows, setRows] = useState<QuestionRow[]>([{ question: 'Compare 3/4 and 2/3', marks: '3', skill: 'Comparing Fractions' }, { question: 'Find an equivalent fraction for 1/2', marks: '3', skill: 'Equivalent Fractions' }, { question: 'Solve 5/8 + 1/8', marks: '4', skill: 'Adding Fractions' }])
   const [fileError, setFileError] = useState('')
   const [touched, setTouched] = useState<Set<string>>(new Set())
@@ -345,14 +386,23 @@ function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (
     event.preventDefault()
     setSubmitted(true)
     if (summary.length) { window.setTimeout(() => { summaryRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); summaryRef.current?.focus({ preventScroll: true }) }, 0); return }
+    // Saving makes the exam available to students, so it is confirmed first.
+    const save = () => {
     const id = `exam-${Date.now()}`
-    update((current) => ({ ...current, exams: [{ id, title: title.trim(), subject, className, language, date, modelFile, modelText: modelText.trim(), sureCheck, faces: sureCheck && faces, status: 'Uploaded', released: false, questions: rows.map((row, index) => ({ prompt: row.question.trim(), skill: row.skill, max: Number(row.marks), expected: criteria[index] })) }, ...current.exams] }))
+    update((current) => ({ ...current, exams: [{ id, title: title.trim(), subject, className, language, date, modelFile, modelText: modelText.trim(), sureCheck, faces: showFaces, status: 'Uploaded', released: false, questions: rows.map((row, index) => ({ prompt: row.question.trim(), skill: row.skill, max: Number(row.marks), expected: criteria[index] })) }, ...current.exams] }))
     notify(`“${title.trim()}” saved for ${className}. It is ready for student uploads.`)
     setScreen('exams')
+    }
+    feedback.confirm({
+      title: 'Save this exam?', tone: 'sun', icon: <FileText size={26} strokeWidth={2.4} />,
+      description: `Students in ${className} can upload papers for “${title.trim()}” once it is saved. AI grading will use only your model answer and marks.`,
+      rows: [{ label: 'Questions', value: rows.length }, { label: 'Total marks', value: totalMarks }, { label: 'Sure-Check', value: sureCheck ? (showFaces ? 'On · face icons' : 'On') : 'Off' }],
+      confirmLabel: 'Save exam', confirmIcon: <Check size={18} />, busyLabel: 'Saving...', minBusyMs: 500, onConfirm: save,
+    })
   }
 
   return <>
-    <PageHeader crumbs={[examsCrumb(setScreen), { label: 'Create exam' }]} title="Create an exam" description="Set the model answer and marking criteria before students upload papers. Fields marked * are required." />
+    <PageHeader crumbs={[examsCrumb(setScreen), { label: 'Create exam' }]} icon={<FilePlus size={30} strokeWidth={2.4} />} tone="sun" title="Create an exam" description="Set the model answer and marking criteria before students upload papers. Fields marked * are required." />
     {submitted && summary.length > 0 && <ErrorSummary summaryRef={summaryRef} title={`Fix ${summary.length} ${summary.length === 1 ? 'field' : 'fields'} before saving the exam`} errors={summary} />}
     <form onSubmit={submit} className="t-form" noValidate>
       <Card>
@@ -360,7 +410,7 @@ function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (
         <div className="t-form-grid">
           <div className="t-span-2"><TextField id="create-title" label="Exam title" value={title} onChange={setTitle} onBlur={() => touch('title')} error={show('title')} required placeholder="e.g. Math Quiz 4: Fractions" /></div>
           <SelectField label="Subject" value={subject} options={Object.keys(skillsBySubject)} onChange={changeSubject} hint="Changing the subject updates the skill tags you can choose." />
-          <SelectField label="Class" value={className} options={['Class 4B', 'Class 4A']} onChange={setClassName} />
+          <SelectField label="Class" value={className} options={['Class 4B', 'Class 4A', 'Class 1A']} onChange={setClassName} />
           <SelectField label="Exam language" value={language} options={['English', 'German']} onChange={(value) => setLanguage(value as 'English' | 'German')} />
           <TextField id="create-date" label="Exam date" value={date} onChange={setDate} onBlur={() => touch('date')} error={show('date')} type="date" required />
         </div>
@@ -404,21 +454,21 @@ function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (
         <CardHeader step={4} title="Sure-Check" description={`Confidence settings for ${className}. Students rate how sure they were after each answer.`} action={<Badge tone={sureCheck ? 'success' : 'neutral'}>{sureCheck ? 'On' : 'Off'}</Badge>} />
         <div className="t-toggle-list">
           <Toggle label="Sure-Check" detail={sureCheck ? 'Students choose Sure, Not sure or Guessed for each answer.' : 'Off: students will not be asked how sure they felt.'} checked={sureCheck} onChange={setSureCheck} />
-          <Toggle label="Face icons for younger grades" detail={sureCheck ? 'Show face icons with the confidence choices (designed for Grades 1–2).' : 'Turn on Sure-Check to use face icons.'} checked={sureCheck && faces} onChange={setFaces} disabled={!sureCheck} />
+          <Toggle label="Face icons for younger grades" detail={!sureCheck ? 'Turn on Sure-Check to use face icons.' : youngClass ? `Always on for ${className} (Grade 1): younger students need the face icons.` : 'Show face icons with the confidence choices (designed for Grades 1–2).'} checked={showFaces} onChange={setFaces} disabled={!sureCheck || youngClass} />
         </div>
         {sureCheck && <div className="t-sure-preview" aria-label="Student preview">
           <span className="t-overline">Student preview</span>
-          <div>{[{ label: 'Sure', icon: <Smile size={16} /> }, { label: 'Not sure', icon: <Meh size={16} /> }, { label: 'Guessed', icon: <CircleHelp size={16} /> }].map((option) => <span className="t-sure-chip" key={option.label}>{faces && <span aria-hidden="true">{option.icon}</span>}{option.label}</span>)}</div>
-          {faces && <small className="t-hint">{className} is Grade 4. Face icons are designed for Grades 1–2.</small>}
+          <div>{[{ label: 'Sure', icon: <Smile size={16} /> }, { label: 'Not sure', icon: <Meh size={16} /> }, { label: 'Guessed', icon: <CircleHelp size={16} /> }].map((option) => <span className="t-sure-chip" key={option.label}>{showFaces && <span aria-hidden="true">{option.icon}</span>}{option.label}</span>)}</div>
+          {showFaces && !youngClass && <small className="t-hint">{className} is Grade 4. Face icons are designed for Grades 1–2.</small>}
         </div>}
       </Card>
 
       <div className="t-form-footer">
         <span>{rows.length} {rows.length === 1 ? 'question' : 'questions'} · {totalMarks} marks{submitted && summary.length > 0 ? ` · ${summary.length} to fix` : ''}</span>
-        <div className="t-actions"><Button variant="secondary" onClick={cancel}>Cancel</Button><Button type="submit" icon={<Check size={15} />}>Save exam</Button></div>
+        <div className="t-actions"><Button variant="ghost" onClick={cancel}>Cancel</Button><Button type="submit" icon={<Check size={18} />}>Save exam</Button></div>
       </div>
     </form>
-    {confirmDiscard && <Modal title="Discard this exam?" description="The details you entered will not be saved." onClose={() => setConfirmDiscard(false)} footer={<><Button variant="secondary" onClick={() => setConfirmDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={() => setScreen('exams')}>Discard exam</Button></>} />}
+     {confirmDiscard && <Modal icon={<Trash2 size={26} strokeWidth={2.4} />} tone="coral" title="Discard this exam?" description="The details you entered will not be saved." onClose={() => setConfirmDiscard(false)} footer={<><Button variant="secondary" onClick={() => setConfirmDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={() => setScreen('exams')}>Discard exam</Button></>} />}
   </>
 }
 
@@ -481,12 +531,49 @@ function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }
   const paperOpen = studentAnswers.filter((item) => !isChecked(item)).length
   const questionOpen = questionAnswers.filter((item) => !isChecked(item)).length
 
+  /* ---- feedback layer: wraps the handlers above, never changes them ---- */
+  const feedback = useActionFeedback()
+  const answerKey = (item: Answer) => `${item.examId}:${item.studentId}:${item.q}`
+  const itemName = (item: Answer) => mode === 'student' ? `Q${item.q + 1}` : person(item.studentId).name.split(' ')[0]
+  // Save correction disables again until the text changes after a save.
+  const [savedText, setSavedText] = useState<Record<string, string>>({})
+  const justSaved = Boolean(current && savedText[answerKey(current)] === current.response)
+  const allChecked = examAnswers.length > 0 && done === examAnswers.length
+  const papersOpen = paperStudents.filter((student) => examAnswers.some((item) => item.studentId === student.id && !isChecked(item))).length
+  const questionsOpen = examQuestions.filter((_, index) => examAnswers.some((item) => item.q === index && !isChecked(item))).length
+  const focusEditor = () => window.setTimeout(() => document.getElementById('ocr-text')?.focus(), 60)
+  const saveCorrection = (target: Answer) => { setSavedText((map) => ({ ...map, [answerKey(target)]: target.response })); feedback.notify({ title: 'Correction saved to this answer.', message: `${person(target.studentId).name} · answer ${target.q + 1}` }) }
+  const askMarkUnreadable = (target: Answer) => target.unreadable ? markUnreadable(target) : feedback.confirm({
+    title: 'Mark this answer as unreadable?', tone: 'coral', icon: <Ban size={26} strokeWidth={2.4} />,
+    description: `${person(target.studentId).name} · answer ${target.q + 1}. No AI grade will be suggested for it; it goes to manual grading in Confirm AI grades. You can restore it later.`,
+    confirmLabel: 'Mark unreadable', confirmIcon: <Flag size={18} />, onConfirm: () => markUnreadable(target),
+  })
+  const confirmAndNext = (target: Answer) => {
+    confirmText(target)
+    feedback.notify({ title: 'Answer confirmed', message: nextOpen ? `${itemName(target)} is checked. Now showing ${itemName(nextOpen)}.` : `${itemName(target)} is checked.` })
+    if (nextOpen) focusEditor()
+  }
+  const askConfirmPaper = () => feedback.confirm({
+    title: `Confirm all text for ${person(studentId).name}?`, tone: 'mint', icon: <Check size={26} strokeWidth={2.6} />,
+    description: `${paperOpen} ${paperOpen === 1 ? 'answer is' : 'answers are'} still marked To check. ${paperOpen === 1 ? 'It' : 'They'} will be confirmed as shown.`,
+    rows: [{ label: 'Answers to confirm', value: paperOpen }, { label: 'Papers left after this', value: Math.max(0, papersOpen - 1) }],
+    confirmLabel: 'Confirm paper text', confirmIcon: <Check size={18} />, onConfirm: confirmPaper,
+  })
+  const askConfirmQuestion = () => feedback.confirm({
+    title: `Confirm question ${question + 1} for all students?`, tone: 'mint', icon: <Check size={26} strokeWidth={2.6} />,
+    description: `${questionOpen} ${questionOpen === 1 ? 'answer is' : 'answers are'} still marked To check. ${questionOpen === 1 ? 'It' : 'They'} will be confirmed as shown.`,
+    rows: [{ label: 'Answers to confirm', value: questionOpen }, { label: 'Questions left after this', value: Math.max(0, questionsOpen - 1) }],
+    confirmLabel: 'Confirm question for all', confirmIcon: <Check size={18} />, onConfirm: confirmQuestion,
+  })
+  const statusIcon = (tone: 'success' | 'warning' | 'danger') => tone === 'success' ? <Check size={15} strokeWidth={2.8} /> : tone === 'danger' ? <Flag size={15} strokeWidth={2.6} /> : <ScanLine size={15} strokeWidth={2.6} />
+
   const statusOf = (item: Answer) => item.unreadable ? { tone: 'danger' as const, label: 'Unreadable' } : item.verified ? { tone: 'success' as const, label: 'Confirmed' } : { tone: 'warning' as const, label: 'To check' }
 
   return <>
-    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Verify text' }]} title="Verify extracted text" description="Compare each scanned answer with the OCR text, fix what the OCR misread, then confirm it for grading." actions={<><Button variant="ghost" onClick={() => setScreen('dashboard')}>Back to dashboard</Button><Button variant="secondary" onClick={() => setScreen('grades')}>Continue to grades <ArrowRight size={15} /></Button></>}>
-      <WorkflowStepper current={1} compact onStep={{ 2: () => setScreen('grades') }} />
+    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Verify text' }]} icon={<ScanLine size={30} strokeWidth={2.4} />} tone="sun" title="Verify extracted text" description="Compare each scanned answer with the OCR text, fix what the OCR misread, then confirm it for grading." actions={<><Button variant="ghost" icon={<Home size={18} />} onClick={() => setScreen('dashboard')}>Back to dashboard</Button><Button variant={allChecked ? 'primary' : 'secondary'} trailingIcon={<ArrowRight size={18} />} onClick={() => setScreen('grades')}>Continue to grades</Button></>}>
+      <WorkflowStepper current={1} onStep={{ 2: () => setScreen('grades') }} />
     </PageHeader>
+    {allChecked && <Banner tone="ok" title={`All ${paperStudents.length} papers are checked`} action={<Button trailingIcon={<ArrowRight size={18} />} onClick={() => setScreen('grades')}>Continue to grades</Button>}>You can continue to grade confirmation.</Banner>}
 
     <Card className="t-verify-toolbar">
       <div className="t-verify-exam"><SelectField label="Exam" value={exam.id} options={exams.map((item) => ({ value: item.id, label: item.title }))} onChange={setExam} /></div>
@@ -504,11 +591,11 @@ function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }
         <div className="t-list">{mode === 'student'
           ? paperStudents.map((student) => {
               const rows = examAnswers.filter((item) => item.studentId === student.id); const checked = rows.filter(isChecked).length
-              return <ListItem key={student.id} active={studentId === student.id} onClick={() => goTo(rows.find((item) => !isChecked(item)) ?? rows[0])} leading={<Avatar name={student.name} />} title={student.name} subtitle={`${checked} of ${rows.length} answers checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
+              return <ListItem key={student.id} active={studentId === student.id} onClick={() => goTo(rows.find((item) => !isChecked(item)) ?? rows[0])} leading={<Avatar name={student.name} />} title={student.name} subtitle={`${checked} of ${rows.length} answers checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'} icon={checked === rows.length ? undefined : <ScanLine size={15} strokeWidth={2.6} />}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
             })
           : examQuestions.map((item, index) => {
               const rows = examAnswers.filter((answer) => answer.q === index); const checked = rows.filter(isChecked).length
-              return <ListItem key={index} active={question === index} onClick={() => { const same = rows.find((answer) => answer.studentId === studentId); goTo(same && !isChecked(same) ? same : rows.find((answer) => !isChecked(answer)) ?? same ?? rows[0]) }} leading={<span className="t-question-number">Q{index + 1}</span>} title={item.skill} subtitle={`${checked} of ${rows.length} students checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
+              return <ListItem key={index} active={question === index} onClick={() => { const same = rows.find((answer) => answer.studentId === studentId); goTo(same && !isChecked(same) ? same : rows.find((answer) => !isChecked(answer)) ?? same ?? rows[0]) }} leading={<span className="t-question-number">Q{index + 1}</span>} title={item.skill} subtitle={`${checked} of ${rows.length} students checked`} trailing={<Badge tone={checked === rows.length ? 'success' : 'warning'} icon={checked === rows.length ? undefined : <ScanLine size={15} strokeWidth={2.6} />}>{checked === rows.length ? 'Done' : 'To check'}</Badge>} />
             })}</div>
       </Card>
 
@@ -516,12 +603,12 @@ function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }
         <CardHeader
           title={mode === 'student' ? `${person(studentId).name} · answer ${question + 1} of ${studentAnswers.length}` : `Q${question + 1} · ${examQuestions[question]?.skill ?? 'Question'} · student ${position + 1} of ${questionAnswers.length}`}
           description={examQuestions[question]?.prompt}
-          action={current && <Badge tone={statusOf(current).tone} dot>{statusOf(current).label}</Badge>} />
+          action={current && <Badge tone={statusOf(current).tone} icon={statusIcon(statusOf(current).tone)}>{statusOf(current).label}</Badge>} />
         {/* Item strip: every answer in the current mode with its status */}
         <div className="t-item-strip" role="tablist" aria-label={mode === 'student' ? `${person(studentId).name}'s answers` : `Answers to question ${question + 1}`}>
           {items.map((item) => { const status = statusOf(item); const active = item === current
             return <button type="button" role="tab" aria-selected={active} key={`${item.studentId}-${item.q}`} className={cx('t-item-chip', active && 'is-active', `is-${status.tone}`)} onClick={() => goTo(item)}>
-              <i aria-hidden="true" />{mode === 'student' ? `Q${item.q + 1}` : person(item.studentId).name.split(' ')[0]}<span className="t-sr-only"> · {status.label}</span>
+              <span className="t-item-chip-icon" aria-hidden="true">{statusIcon(status.tone)}</span>{mode === 'student' ? `Q${item.q + 1}` : person(item.studentId).name.split(' ')[0]}<span className="t-sr-only"> · {status.label}</span>
             </button> })}
         </div>
 
@@ -530,30 +617,31 @@ function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }
             <ScanView tokens={tokens} zoom={zoom} onZoom={setZoom} label={`Scan · ${person(current.studentId).name} · answer ${current.q + 1}`} />
             <div className="t-ocr">
               <div className="t-ocr-head">
-                <label htmlFor="ocr-text"><ScanLine size={16} aria-hidden="true" /> Extracted text</label>
+                <label htmlFor="ocr-text"><ScanLine size={20} strokeWidth={2.4} aria-hidden="true" /> Extracted text</label>
                 {edited && <Badge tone="accent">Edited</Badge>}
               </div>
               {current.unreadable
-                ? <Alert tone="error" title="Marked unreadable">No AI grade will be suggested for this answer. It goes to manual grading in Confirm AI grades.</Alert>
+                ? <Banner tone="err" title="Marked unreadable">No AI grade will be suggested for this answer. It goes to manual grading in Confirm AI grades.</Banner>
                 : <p className="t-ocr-legend" id="ocr-legend">{stillUnsure ? <><mark className="is-unsure">{stillUnsure}</mark> {stillUnsure === 1 ? 'word or number' : 'words or numbers'} the OCR was unsure about. Compare {stillUnsure === 1 ? 'it' : 'them'} with the scan and type any correction directly in the text.</> : unsureCount ? <><Check size={13} aria-hidden="true" /> All {unsureCount} unsure {unsureCount === 1 ? 'token was' : 'tokens were'} reviewed or corrected.</> : <><Check size={13} aria-hidden="true" /> The OCR was confident about every word.</>}</p>}
               <OcrEditor id="ocr-text" value={current.response} tokens={tokens} disabled={current.unreadable} reviewed={current.verified && !current.unreadable} describedBy="ocr-legend" onChange={(value) => editText(current, value)} />
               {edited && !current.unreadable && <div className="t-ocr-edit-row"><small className="t-muted">Original OCR: “{scanText}”</small><Button variant="ghost" size="sm" onClick={() => patchAnswer(current, { response: scanText })}>Restore OCR text</Button></div>}
               <DescriptionList items={[{ term: 'Question', detail: examQuestions[current.q]?.prompt }, { term: 'Model answer', detail: examQuestions[current.q]?.expected }]} />
-              <div className="t-actions">
-                <Button variant="ghost" disabled={!edited || current.unreadable} onClick={() => notify('Correction saved to this answer.')}>Save correction</Button>
-                <Button variant="secondary" onClick={() => markUnreadable(current)}>{current.unreadable ? 'Restore answer' : 'Mark unreadable'}</Button>
-                <Button icon={<Check size={15} />} onClick={() => confirmText(current)} disabled={current.unreadable || current.verified}>{current.verified ? 'Text confirmed' : nextOpen ? 'Confirm and next' : 'Confirm text'}</Button>
+              {justSaved && edited && <p className="t-saved-note" role="status"><Check size={16} strokeWidth={2.8} aria-hidden="true" />Saved just now</p>}
+              <div className="t-actions t-ocr-actions">
+                <Button variant="ghost" disabled={!edited || current.unreadable || justSaved} onClick={() => saveCorrection(current)}>Save correction</Button>
+                <Button variant="secondary" icon={<Flag size={18} />} onClick={() => askMarkUnreadable(current)}>{current.unreadable ? 'Restore answer' : 'Mark unreadable'}</Button>
+                <Button icon={<Check size={18} />} state={current.verified && !current.unreadable ? 'done' : undefined} onClick={() => confirmAndNext(current)} disabled={current.unreadable}>{current.verified ? 'Text confirmed' : nextOpen ? 'Confirm and next' : 'Confirm text'}</Button>
               </div>
             </div>
           </div>
           <footer className="t-card-footer t-pager">
             <div className="t-actions">
-              <Button variant="ghost" icon={<ChevronLeft size={15} />} disabled={position <= 0} onClick={() => goTo(items[position - 1])}>Previous</Button>
-              <Button variant="secondary" disabled={position >= items.length - 1} onClick={() => goTo(items[position + 1])}>{mode === 'student' ? 'Next answer' : 'Next student'} <ChevronRight size={15} /></Button>
+              <Button variant="secondary" icon={<ChevronLeft size={18} />} disabled={position <= 0} onClick={() => goTo(items[position - 1])}>Previous</Button>
+              <Button variant="secondary" trailingIcon={<ChevronRight size={18} />} disabled={position >= items.length - 1} onClick={() => goTo(items[position + 1])}>{mode === 'student' ? 'Next answer' : 'Next student'}</Button>
             </div>
             {mode === 'student'
-              ? <Button variant="secondary" icon={<Check size={15} />} disabled={!paperOpen} onClick={confirmPaper}>{paperOpen ? `Confirm paper text (${paperOpen} left)` : 'Paper text confirmed'}</Button>
-              : <Button variant="secondary" icon={<Check size={15} />} disabled={!questionOpen} onClick={confirmQuestion}>{questionOpen ? `Confirm question for all (${questionOpen} left)` : 'Question confirmed for all'}</Button>}
+              ? <Button variant="secondary" icon={<Check size={18} />} state={paperOpen ? undefined : 'done'} onClick={askConfirmPaper}>{paperOpen ? `Confirm paper text (${paperOpen} left)` : 'Paper text confirmed'}</Button>
+              : <Button variant="secondary" icon={<Check size={18} />} state={questionOpen ? undefined : 'done'} onClick={askConfirmQuestion}>{questionOpen ? `Confirm question for all (${questionOpen} left)` : 'Question confirmed for all'}</Button>}
           </footer>
         </> : <EmptyState icon={<FileText size={20} />} title={`${person(studentId).name} has no answer for question ${question + 1}.`} description="Choose another answer from the list." />}
       </Card>
@@ -596,26 +684,57 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
   const groups = useMemo(() => { const map = new Map<string, Answer[]>(); for (const answer of examAnswers.filter((item) => !item.unreadable)) map.set(answer.response.trim().toLowerCase(), [...(map.get(answer.response.trim().toLowerCase()) ?? []), answer]); return [...map.values()].filter((group) => group.length > 1) }, [examAnswers])
   const release = () => { const pending = answers.filter((item) => item.examId === exam.id && (!item.verified || !item.confirmed)); if (pending.length) { notify(`${pending.length} answers still need text verification and teacher grading before release.`); setReleaseConfirm(false); return } update((current) => ({ ...current, exams: current.exams.map((item) => item.id === exam.id ? { ...item, released: true, status: 'Released' } : item) })); setReleaseConfirm(false); notify('Confirmed grades released. Students have been notified.') }
   const exportCsv = () => { const rows = [['Student', 'Exam', 'Total', 'State', 'Cause', 'Teacher confirmed'], ...totals.map(({ student, total, graded, answerCount }) => [student.name, exam.title, graded ? `${total} / ${possible}` : answerCount ? `${total} / ${possible} (in progress)` : 'No paper', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.state ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.cause ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.confirmed ? 'Yes' : 'No'])]; const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n'); const link = document.createElement('a'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.href = url; link.download = `${exam.id}-final-grades.csv`; link.click(); URL.revokeObjectURL(url); notify('Final grade spreadsheet downloaded.') }
-  const copyGrades = <><Button variant="secondary" icon={<Download size={15} />} onClick={exportCsv}>Export grades</Button><Button icon={<Send size={15} />} onClick={() => setReleaseConfirm(true)} disabled={exam.released}>{exam.released ? 'Results released' : 'Release confirmed results'}</Button></>
+  /* ---- feedback layer: wraps the handlers above ---- */
+  const feedback = useActionFeedback()
+  const [regrading, setRegrading] = useState(false)
+  const pendingRelease = answers.filter((item) => item.examId === exam.id && (!item.verified || !item.confirmed)).length
+  const confirmedCount = answers.filter((item) => item.examId === exam.id && item.verified && item.confirmed).length
+  const regradeCount = answers.filter((item) => item.examId === exam.id && item.verified && !item.unreadable && !item.confirmed && !item.overrideReason).length
+  const keptCount = answers.filter((item) => item.examId === exam.id && item.verified && !item.unreadable && (item.confirmed || item.overrideReason)).length
+  const askRelease = () => feedback.confirm({
+    title: 'Release confirmed results?', tone: 'sun', icon: <Send size={26} strokeWidth={2.4} />,
+    description: 'Students will be notified and can see their grades and feedback. Only teacher-confirmed results are shared.',
+    rows: [{ label: 'Students notified', value: submittedCount }, { label: 'Confirmed answers', value: `${confirmedCount} of ${answers.filter((item) => item.examId === exam.id).length}` }],
+    // Today's rule: release is blocked until every answer is verified and confirmed.
+    blocked: pendingRelease ? `${pendingRelease} answers still need text verification and teacher grading before release.` : undefined,
+    confirmLabel: 'Release confirmed results', confirmIcon: <Send size={18} />, busyLabel: 'Releasing...', minBusyMs: 900,
+    onConfirm: release,
+  })
+  const confirmWithUndo = (item: Answer) => {
+    const before = { confirmed: item.confirmed, score: item.score, overrideReason: item.overrideReason }
+    const confirmedNow = answers.filter((answer) => answer.examId === exam.id && answer.q === item.q && answer.confirmed).length + (item.confirmed ? 0 : 1)
+    confirm(item)
+    feedback.notify({ title: 'Grade confirmed', message: `${person(item.studentId).name} · Q${item.q + 1} · ${confirmedNow} of ${students.length} confirmed`, undo: () => patchAnswer(item, before) })
+  }
+  const askOverride = (item: Answer) => feedback.confirm({
+    title: 'Override the AI grade?', tone: 'lavender', icon: <Pencil size={24} strokeWidth={2.4} />,
+    description: `Your grade (${draftScore} / ${item.max}) replaces the AI suggestion for ${person(item.studentId).name} · Q${item.q + 1}. It is added to the second-check list if you later edit the model answer and regrade.`,
+    confirmLabel: 'Override grade', confirmIcon: <Pencil size={18} />, onConfirm: () => saveOverride(item),
+  })
+  const runRegrade = () => { setRegrading(true); window.setTimeout(() => { try { saveModelAndRegrade() } finally { setRegrading(false) } }, 700) }
+  const copyGrades = <><Button variant="secondary" icon={<Download size={18} />} onClick={exportCsv}>Export grades</Button><Button icon={<Send size={18} />} state={exam.released ? 'done' : undefined} onClick={askRelease}>{exam.released ? 'Results released' : 'Release confirmed results'}</Button></>
   return <>
-    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Confirm grades' }]} title="Confirm AI grades" description={`${exam.title} · ${allExamAnswers.length} readable answers · teacher decisions are final.`} actions={copyGrades}>
-      <WorkflowStepper current={exam.released ? 3 : 2} compact onStep={{ 1: () => setScreen('verify') }} />
+    <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Confirm grades' }]} icon={<ClipboardCheck size={30} strokeWidth={2.4} />} tone="lavender" title="Confirm AI grades" description={`${exam.title} · ${allExamAnswers.length} readable answers · teacher decisions are final.`} actions={copyGrades}>
+      <WorkflowStepper current={exam.released ? 3 : 2} allDone={exam.released} onStep={{ 1: () => setScreen('verify') }} />
     </PageHeader>
+    {exam.released && <Banner tone="ok" title="Results released">{submittedCount} {submittedCount === 1 ? 'student was' : 'students were'} notified. They can now see their grades and feedback.</Banner>}
 
     <Card className="t-grade-toolbar">
       <div className="t-grade-exam">
         <SelectField label="Exam" value={exam.id} options={data.exams.map((item) => ({ value: item.id, label: item.title }))} onChange={setExam} />
-        <div className="t-criteria"><span className="t-overline">Model criteria</span><p>{exam.modelText || 'Set the approved model answer in exam setup.'}</p><Button variant="ghost" size="sm" icon={<Pencil size={14} />} onClick={() => setEditModel(true)}>Edit model answer & regrade</Button></div>
+        <div className="t-criteria"><span className="t-overline">Model criteria</span><p>{exam.modelText || 'Set the approved model answer in exam setup.'}</p><button type="button" className="ts-link" onClick={() => setEditModel(true)}><Pencil size={18} strokeWidth={2.4} aria-hidden="true" />Edit model answer & regrade</button></div>
       </div>
-      <div className="t-metric"><span className="t-row-icon" aria-hidden="true"><Sparkles size={18} /></span><div><strong>{agreement}%</strong><span>AI agreement</span><small>Confirmed without modification</small></div></div>
+      <div className="t-metric"><span className="t-row-icon ts-tile-lavender" aria-hidden="true"><Sparkles size={24} strokeWidth={2.4} /></span><div><strong>{agreement}%</strong><span>AI agreement</span><small>Confirmed without modification</small></div></div>
     </Card>
 
     <div className="t-toolbar">
-      <Tabs label="Questions" value={question} onChange={setQuestion} options={examQuestions.map((item, index) => ({ value: index, label: `Q${index + 1} · ${item.skill}`, meta: `${answers.filter((answer) => answer.examId === exam.id && answer.q === index && answer.confirmed).length}/${students.length} confirmed` }))} />
-      <Segmented label="Filter answers" value={filter} onChange={setFilter} options={[{ value: 'priority', label: <><AlertTriangle size={14} aria-hidden="true" />Surprise first</> }, { value: 'all', label: 'All answers' }, { value: 'groups', label: 'Group similar' }]} />
+      <Tabs label="Questions" value={question} onChange={setQuestion} options={examQuestions.map((item, index) => { const confirmedQ = answers.filter((answer) => answer.examId === exam.id && answer.q === index && answer.confirmed).length; return { value: index, label: `Q${index + 1} · ${item.skill}`, meta: `${confirmedQ}/${students.length} confirmed`, progress: confirmedQ / students.length * 100 } })} />
+      <Segmented label="Filter answers" value={filter} onChange={setFilter} options={[{ value: 'priority', label: <><AlertTriangle size={16} aria-hidden="true" />Surprise first</> }, { value: 'all', label: 'All answers' }, { value: 'groups', label: 'Group similar' }]} />
     </div>
 
     <Card padded={false} className="t-grade-list">
+      {/* After release the grades are final: every control in the review list becomes read-only. */}
+      <fieldset className="t-fieldset" disabled={exam.released}>
       {filter === 'groups'
         ? groups.length ? groups.map((group, index) => <div className="t-group-row" key={index}>
             <div><Badge>{group.length} matching answers</Badge><p className="t-quote">{group[0].response}</p><small>{group.map((item) => person(item.studentId).name).join(', ')}</small></div>
@@ -624,28 +743,32 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
           </div>) : <EmptyState title="No matching answers in this question." />
         : shown.length ? shown.map((item) => item.unreadable
           ? <ManualGradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} onSave={(score, note) => { patchAnswer(item, { score, ai: 0, confirmed: true, overrideReason: note, state: 'Wobbly', cause: 'Unclear OCR reading', matched: 'Manually scored by teacher', missed: 'No automated grade was generated.', feedbackEn: 'Your answer was unreadable and has been graded by your teacher.' }); notify(`Manual grade saved for ${person(item.studentId).name}.`) }} />
-          : <GradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} onConfirm={() => confirm(item)} onEdit={() => { setEditing(`${item.studentId}-${item.q}`); setDraftScore(String(item.score)); setReason('') }} onPatch={(patch) => patchAnswer(item, patch)} editing={editing === `${item.studentId}-${item.q}`} draftScore={draftScore} setDraftScore={setDraftScore} reason={reason} setReason={setReason} onSaveOverride={() => saveOverride(item)} onCancel={() => setEditing(null)} />)
+          : <GradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} onConfirm={() => confirmWithUndo(item)} onEdit={() => { setEditing(`${item.studentId}-${item.q}`); setDraftScore(String(item.score)); setReason('') }} onPatch={(patch) => patchAnswer(item, patch)} editing={editing === `${item.studentId}-${item.q}`} draftScore={draftScore} setDraftScore={setDraftScore} reason={reason} setReason={setReason} onSaveOverride={() => askOverride(item)} onCancel={() => setEditing(null)} />)
           : <EmptyState icon={<Check size={20} />} title="No surprise mistakes waiting." description="Switch to All answers to review other responses." action={<Button variant="secondary" onClick={() => setFilter('all')}>Show all answers</Button>} />}
+      </fieldset>
     </Card>
 
     <h2 className="t-section-title">Results summary</h2>
     <div className="t-grid t-grid-summary">
+      <div className="t-stack t-summary-stats">
       <StatCard label="Class average" value={average === null ? '—' : `${average} / ${possible}`} detail={statsBasis} icon={<Users size={18} />} />
       <StatCard label="Pass rate" value={passRate === null ? '—' : `${passRate}%`} detail={passRate === null ? `Pass mark: ${Number.isInteger(passMark) ? passMark : passMark.toFixed(1)} / ${possible} (60%)` : `${passedCount} of ${gradedTotals.length} passed · pass mark ${Number.isInteger(passMark) ? passMark : passMark.toFixed(1)} / ${possible} (60%)`} icon={<Check size={18} />} />
+      </div>
       <Card padded={false}>
         <CardHeader title="Student totals" />
         <ul className="t-kv-list">{totals.map(({ student, total, graded, confirmedCount, answerCount }) => <li key={student.id}><span>{student.name}</span>{graded
-          ? <span className="t-total"><Badge tone={total >= passMark ? 'success' : 'danger'}>{total >= passMark ? 'Pass' : 'Below pass'}</Badge><strong>{total} / {possible}</strong></span>
+          ? <S.ScorePill passed={total >= passMark}>{total} / {possible}</S.ScorePill>
           : <small className="t-muted">{answerCount ? `In progress · ${confirmedCount} of ${answerCount} confirmed` : 'No paper'}</small>}</li>)}</ul>
       </Card>
       <Card padded={false}>
         <CardHeader title="Second check" description="Teacher-overridden grades awaiting review" action={<Badge tone={data.regradeChecks.length ? 'warning' : 'neutral'}>{data.regradeChecks.length}</Badge>} />
-        {data.regradeChecks.length ? <ul className="t-kv-list">{data.regradeChecks.map((name) => <li key={name}><span>{name}</span></li>)}</ul> : <EmptyState title="Nothing to re-check." />}
+        {data.regradeChecks.length ? <ul className="t-kv-list">{data.regradeChecks.map((name) => <li key={name}><span>{name}</span></li>)}</ul> : <EmptyState icon={<Check size={24} strokeWidth={2.8} />} title="Nothing to re-check." />}
       </Card>
     </div>
 
-    {releaseConfirm && <Modal title="Release confirmed results?" description="Students will be notified. Every answer must be text-verified and teacher-graded before results can be released." onClose={() => setReleaseConfirm(false)} footer={<><Button variant="secondary" onClick={() => setReleaseConfirm(false)}>Cancel</Button><Button icon={<Send size={15} />} onClick={release}>Release results</Button></>} />}
-    {editModel && <Modal title="Edit model answer and regrade" description="Verified, readable answers will be regraded against these criteria. Existing teacher overrides stay unchanged and are added to the second-check list." onClose={() => { setEditModel(false); setModelDraft(exam.modelText) }} footer={<><Button variant="secondary" onClick={() => { setEditModel(false); setModelDraft(exam.modelText) }}>Cancel</Button><Button icon={<Sparkles size={15} />} onClick={saveModelAndRegrade} disabled={!modelDraft.trim()}>Save and regrade</Button></>}>
+    {/* Release uses the shared ConfirmDialog (askRelease above). */}
+    {editModel && <Modal icon={<RotateCcw size={26} strokeWidth={2.4} />} tone="sun" busy={regrading} title="Edit model answer and regrade" description="Verified, readable answers will be regraded against these criteria. Existing teacher overrides stay unchanged and are added to the second-check list." onClose={() => { setEditModel(false); setModelDraft(exam.modelText) }} footer={<><Button variant="secondary" disabled={regrading} onClick={() => { setEditModel(false); setModelDraft(exam.modelText) }}>Cancel</Button><Button icon={<Sparkles size={15} />} onClick={runRegrade} state={regrading ? 'loading' : undefined} busyLabel="Regrading..." disabled={!modelDraft.trim()}>Save and regrade</Button></>}>
+      <dl className="t-confirm-rows"><div><dt>Answers to regrade</dt><dd>{regradeCount}</dd></div><div><dt>Grades kept as they are</dt><dd>{keptCount}</dd></div></dl>
       <TextArea label="Approved answer key" rows={8} value={modelDraft} onChange={setModelDraft} />
     </Modal>}
   </>
@@ -658,13 +781,14 @@ function StateGuide() {
 
 function GradeCard({ answer, question, onConfirm, onEdit, onPatch, editing, draftScore, setDraftScore, reason, setReason, onSaveOverride, onCancel }: { answer: Answer; question: { prompt: string; skill: string; max: number; expected: string }; onConfirm: () => void; onEdit: () => void; onPatch: (patch: Partial<Answer>) => void; editing: boolean; draftScore: string; setDraftScore: (value: string) => void; reason: string; setReason: (value: string) => void; onSaveOverride: () => void; onCancel: () => void }) {
   const name = person(answer.studentId).name
+  const feedback = useActionFeedback()
   // Each answer has its own feedback language (FR 54: written in English OR German).
   const language = answer.feedbackLanguage ?? 'English'
   return <article className={cx('t-grade', answer.state === 'Surprise mistake' && 'is-priority')}>
     <header className="t-grade-head">
       <Avatar name={name} />
       <div className="t-grade-who"><strong>{name}</strong><small>Q{answer.q + 1} · {question.skill} · Sure-Check: {answer.sure}</small></div>
-      <div className="t-badges"><Badge tone={stateTone(answer.state)} dot>{answer.state}</Badge>{answer.confirmed && <Badge tone="success">Teacher confirmed</Badge>}</div>
+      <div className="t-badges"><Badge tone={stateTone(answer.state)} dot>{answer.state}</Badge>{answer.confirmed ? <Badge tone="success">Teacher confirmed</Badge> : <Badge tone="warning">To confirm</Badge>}</div>
       <div className="t-score"><strong>{answer.overrideReason ? answer.score : answer.ai}<span>/{answer.max}</span></strong><small>{answer.overrideReason ? 'Teacher grade' : 'AI suggestion'}</small></div>
     </header>
 
@@ -673,8 +797,8 @@ function GradeCard({ answer, question, onConfirm, onEdit, onPatch, editing, draf
         <span className="t-overline">Student answer</span>
         <p className="t-quote">{answer.response}</p>
         <ul className="t-evidence">
-          <li className="is-match"><Check size={15} aria-hidden="true" /><span><strong>Matched</strong>{answer.matched}</span></li>
-          <li className="is-miss"><X size={15} aria-hidden="true" /><span><strong>Needs attention</strong>{answer.missed}</span></li>
+          <li className="is-match"><span className="t-evidence-tile" aria-hidden="true"><Check size={18} strokeWidth={2.8} /></span><span><strong>Matched</strong>{answer.matched}</span></li>
+          <li className="is-miss"><span className="t-evidence-tile" aria-hidden="true"><X size={18} strokeWidth={2.8} /></span><span><strong>Needs attention</strong>{answer.missed}</span></li>
         </ul>
         <small className="t-muted">Model answer: {question.expected}</small>
       </div>
@@ -702,7 +826,7 @@ function GradeCard({ answer, question, onConfirm, onEdit, onPatch, editing, draf
         <TextArea rows={3} ariaLabel={`Feedback for ${name} in ${language}`} value={language === 'English' ? answer.feedbackEn : answer.feedbackDe} onChange={(value) => onPatch(language === 'English' ? { feedbackEn: value } : { feedbackDe: value })} placeholder={language === 'English' ? 'Write your feedback in English.' : 'Schreibe dein Feedback auf Deutsch.'} />
         <div className="t-feedback-actions">
           <small className="t-hint">{name.split(' ')[0]} receives this feedback in {language === 'English' ? 'English' : 'German'}.</small>
-          <Button variant="ghost" size="sm" onClick={() => onPatch(language === 'English' ? { feedbackEn: 'Try comparing the numerators when denominators match.' } : { feedbackDe: 'Vergleiche die Zähler, wenn die Nenner gleich sind.' })}>Accept suggestion</Button>
+          <Button variant="secondary" size="sm" icon={<Sparkles size={16} />} onClick={() => { const before = language === 'English' ? { feedbackEn: answer.feedbackEn } : { feedbackDe: answer.feedbackDe }; onPatch(language === 'English' ? { feedbackEn: 'Try comparing the numerators when denominators match.' } : { feedbackDe: 'Vergleiche die Zähler, wenn die Nenner gleich sind.' }); feedback.notify({ tone: 'info', title: 'Suggestion added', message: `Feedback for ${name} · Q${answer.q + 1}`, undo: () => onPatch(before) }) }}>Accept suggestion</Button>
         </div>
       </div>
       <KeywordGlossary answer={answer} name={name} suggestion={languageTermsByQuestion[answer.q] ?? languageTermsByQuestion[0]} onChange={(list) => onPatch(keywordPatch(list))} />
@@ -712,7 +836,7 @@ function GradeCard({ answer, question, onConfirm, onEdit, onPatch, editing, draf
       {answer.overrideReason ? <Badge tone="warning">Teacher grade: {answer.score}/{answer.max} · {answer.overrideReason}</Badge> : <span />}
       <div className="t-actions">
         <Button variant="secondary" icon={<Pencil size={14} />} onClick={onEdit}>Override grade</Button>
-        <Button icon={<Check size={15} />} onClick={onConfirm} disabled={answer.confirmed && !answer.overrideReason}>{answer.confirmed && !answer.overrideReason ? 'Grade confirmed' : 'Confirm AI grade'}</Button>
+        <Button icon={<Check size={18} />} state={answer.confirmed && !answer.overrideReason ? 'done' : undefined} onClick={onConfirm}>{answer.confirmed && !answer.overrideReason ? 'Grade confirmed' : 'Confirm AI grade'}</Button>
       </div>
     </footer>
   </article>
@@ -764,6 +888,7 @@ function KeywordGlossary({ answer, name, suggestion, onChange }: { answer: Answe
 }
 
 function ManualGradeCard({ answer, question, onSave }: { answer: Answer; question: { prompt: string; skill: string; max: number; expected: string }; onSave: (score: number, reason: string) => void }) {
+  const feedback = useActionFeedback()
   const [score, setScore] = useState(''); const [reason, setReason] = useState('')
   const name = person(answer.studentId).name
   return <article className="t-grade is-manual">
@@ -779,7 +904,7 @@ function ManualGradeCard({ answer, question, onSave }: { answer: Answer; questio
         <TextField label={`Teacher score (0–${answer.max})`} type="number" min={0} max={answer.max} value={score} onChange={setScore} />
         <TextField label="Reason for manual grade" value={reason} onChange={setReason} required hint="Required." />
       </div>
-      <div className="t-actions"><Button icon={<Check size={15} />} disabled={!reason.trim() || !score || Number(score) < 0 || Number(score) > answer.max} onClick={() => onSave(Number(score), reason.trim())}>Save manual grade</Button></div>
+      <div className="t-actions"><Button icon={<Check size={15} />} disabled={!reason.trim() || !score || Number(score) < 0 || Number(score) > answer.max} onClick={() => feedback.confirm({ title: 'Save the manual grade?', tone: 'lavender', icon: <Pencil size={24} strokeWidth={2.4} />, description: `${name} · Q${answer.q + 1} gets ${score} / ${answer.max} from you. No AI grade is used for this answer.`, confirmLabel: 'Save manual grade', confirmIcon: <Check size={18} />, onConfirm: () => onSave(Number(score), reason.trim()) })}>Save manual grade</Button></div>
     </div>
   </article>
 }
@@ -788,7 +913,8 @@ function ManualGradeCard({ answer, question, onSave }: { answer: Answer; questio
  * Learning gaps & red flags.
  * ========================================================================== */
 
-function LearningGaps({ data, update, setScreen, notify }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
+function LearningGaps({ data, update, setScreen, notify, Mascot }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void; Mascot?: SynaMascotComponent }) {
+  const feedback = useActionFeedback()
   const [examId, setExamId] = useState('quiz-3'); const [dismissId, setDismissId] = useState<string | null>(null); const [dismissComment, setDismissComment] = useState(''); const [reteachSkill, setReteachSkill] = useState('Comparing Fractions'); const [sent, setSent] = useState(false)
   const exam = data.exams.find((item) => item.id === examId) ?? data.exams[0]
   const examAnswers = data.answers.filter((item) => item.examId === exam.id)
@@ -809,7 +935,8 @@ function LearningGaps({ data, update, setScreen, notify }: { data: Data; update:
   const sendGroupMessage = () => { if (!groupMessage.trim() || !groupTargets.length) return; update((current) => ({ ...current, sent: [...current.sent, ...groupTargets.map((student) => `${student.id}: ${groupMessage.trim()}`)] })); notify(`Supportive message sent to ${groupTargets.length} students with a confirmed ${reteachSkill} learning gap.`); setGroupMessage('') }
   const pendingFlags = data.flags.filter((item) => item.status === 'Pending').length
   return <>
-    <PageHeader title="Learning gaps & red flags" description="Separate conceptual misunderstandings from language difficulties, then plan the right support." actions={<Button variant="secondary" icon={<Users size={15} />} onClick={() => setScreen('profile')}>Student profiles</Button>} />
+    <S.PageHero tone="coral" Mascot={Mascot} eyebrow="Learning gaps" eyebrowIcon={<Target size={18} strokeWidth={2.4} />} title="Learning gaps & red flags" helper="Separate conceptual misunderstandings from language difficulties, then plan the right support."
+      action={<S.StickerButton variant="secondary" icon={<Users size={20} strokeWidth={2.4} />} onClick={() => setScreen('profile')}>Student profiles</S.StickerButton>} />
 
     <Card padded={false}>
       <CardHeader title="Class misconception map" description="Confidently incorrect answers: Sure-Check marked Sure and the answer was incorrect. Select a concept to plan support." action={<div className="t-header-select"><SelectField label="Exam" value={exam.title} options={data.exams.map((item) => item.title)} onChange={(value) => setExamId(data.exams.find((item) => item.title === value)?.id ?? 'quiz-3')} /></div>} />
@@ -824,14 +951,14 @@ function LearningGaps({ data, update, setScreen, notify }: { data: Data; update:
       })}</div>
       <footer className="t-card-footer t-plan">
         <div><span className="t-overline">Class support plan · Class 4B</span><strong>{reteachSkill}</strong></div>
-        <div className="t-actions"><Button variant="secondary" icon={<Check size={15} />} onClick={() => { notify(`${reteachSkill} added to the class reteach plan.`) }}>Plan to reteach</Button><Button icon={<Send size={15} />} onClick={sendPractice}>{sent ? 'Practice sent' : 'Send practice to class'}</Button></div>
+        <div className="t-actions"><Button variant="secondary" icon={<Check size={15} />} onClick={() => { notify(`${reteachSkill} added to the class reteach plan.`) }}>Plan to reteach</Button><Button icon={<Send size={18} />} state={sent ? 'done' : undefined} onClick={() => feedback.confirm({ title: 'Send practice to the whole class?', tone: 'sun', icon: <Send size={24} strokeWidth={2.4} />, description: `Every student in Class 4B gets a ${reteachSkill} practice set in their results.`, rows: [{ label: 'Students', value: students.length }], confirmLabel: 'Send practice to class', confirmIcon: <Send size={18} />, busyLabel: 'Sending...', minBusyMs: 600, onConfirm: sendPractice })}>{sent ? 'Practice sent' : 'Send practice to class'}</Button></div>
       </footer>
     </Card>
 
     <Card>
       <CardHeader title="Message students with this learning gap" description={`${groupTargets.length} students have a confirmed ${reteachSkill} concept error across assessments.`} />
       <TextArea label="Supportive message" rows={3} value={groupMessage} onChange={setGroupMessage} placeholder="Share a reassuring note and one next step." />
-      <div className="t-actions t-actions-end"><Button icon={<Send size={15} />} onClick={sendGroupMessage} disabled={!groupMessage.trim() || !groupTargets.length}>Send to learning-gap group</Button></div>
+      <div className="t-actions t-actions-end"><Button icon={<Send size={18} />} onClick={() => feedback.confirm({ title: 'Send this message?', tone: 'sky', icon: <Send size={24} strokeWidth={2.4} />, description: `${groupTargets.map((student) => student.name).join(', ')} will receive your message.`, rows: [{ label: 'Students', value: groupTargets.length }], confirmLabel: 'Send to learning-gap group', confirmIcon: <Send size={18} />, busyLabel: 'Sending...', minBusyMs: 600, onConfirm: sendGroupMessage })} disabled={!groupMessage.trim() || !groupTargets.length}>Send to learning-gap group</Button></div>
     </Card>
 
     <div className="t-grid t-grid-2">
@@ -850,12 +977,12 @@ function LearningGaps({ data, update, setScreen, notify }: { data: Data; update:
           <p>{flag.reason}</p>
           <small className="t-muted">Answers: {flag.answers}</small>
           {flag.status === 'Pending'
-            ? <div className="t-actions"><Button variant="secondary" size="sm" onClick={() => setDismissId(dismissId === flag.id ? null : flag.id)}>Dismiss</Button><Button size="sm" icon={<Check size={14} />} onClick={() => actionFlag(flag.id, 'Confirmed')}>Confirm flag</Button></div>
+            ? <div className="t-actions"><Button variant="secondary" size="sm" onClick={() => setDismissId(dismissId === flag.id ? null : flag.id)}>Dismiss</Button><Button size="sm" icon={<Check size={16} />} onClick={() => feedback.confirm({ title: 'Confirm this red flag?', tone: 'coral', icon: <Flag size={24} strokeWidth={2.4} />, description: `${person(flag.studentId).name} · ${flag.skill}. The support note becomes visible to the student and parent.`, confirmLabel: 'Confirm flag', confirmIcon: <Check size={18} />, onConfirm: () => actionFlag(flag.id, 'Confirmed') })}>Confirm flag</Button></div>
             : flag.status === 'Confirmed' ? <small className="t-note t-note-success"><Eye size={13} aria-hidden="true" /> Confirmed support need · visible to student and parent</small>
             : <small className="t-note"><Lock size={13} aria-hidden="true" /> Dismissed privately: {flag.comment || 'No comment added'}</small>}
           {dismissId === flag.id && <div className="t-inset">
             <TextField label="Short dismissal comment" value={dismissComment} onChange={setDismissComment} required hint="Private. Not shown to the student or parent." />
-            <div className="t-actions"><Button variant="secondary" size="sm" onClick={() => setDismissId(null)}>Cancel</Button><Button variant="danger" size="sm" onClick={() => dismissComment.trim() && actionFlag(flag.id, 'Dismissed', dismissComment.trim())} disabled={!dismissComment.trim()}>Save dismissal</Button></div>
+            <div className="t-actions"><Button variant="secondary" size="sm" onClick={() => setDismissId(null)}>Cancel</Button><Button variant="danger" size="sm" onClick={() => dismissComment.trim() && feedback.confirm({ title: 'Dismiss this red flag?', tone: 'coral', icon: <Flag size={24} strokeWidth={2.4} />, description: `${person(flag.studentId).name} · ${flag.skill}. It will not be shown to the student or parent; your comment stays visible to teachers only.`, confirmLabel: 'Save dismissal', danger: true, onConfirm: () => actionFlag(flag.id, 'Dismissed', dismissComment.trim()) })} disabled={!dismissComment.trim()}>Save dismissal</Button></div>
           </div>}
         </li>)}</ul>
       </Card>
@@ -873,12 +1000,18 @@ function LearningGaps({ data, update, setScreen, notify }: { data: Data; update:
  * ========================================================================== */
 
 function StudentProfile({ data, update, setScreen, notify }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
+  const feedback = useActionFeedback()
   const [studentId, setStudentId] = useState('malak'); const [draft, setDraft] = useState(data.notes.malak ?? ''); const [comment, setComment] = useState('')
   const student = person(studentId); const ownAnswers = data.answers.filter((item) => item.studentId === studentId); const conceptErrors = ownAnswers.filter((item) => item.confirmed && item.cause === 'Concept error'); const repeatedSkills = [...new Set(conceptErrors.map((item) => item.examId + item.q))]
   const saveNote = () => { update((current) => ({ ...current, notes: { ...current.notes, [studentId]: draft } })); notify('Private teacher note saved. Students and parents cannot see this note.') }
-  const sendFeedback = () => { if (!comment.trim()) { notify('Write a short comment before sending feedback.'); return }; update((current) => ({ ...current, sent: [...current.sent, `${studentId}: ${comment.trim()}`] })); setComment(''); notify(`Feedback sent to ${student.name}.`) }
+  // "Saved just now" until the note changes again (presentation only).
+  const [savedNoteFor, setSavedNoteFor] = useState('')
+  const noteSaved = savedNoteFor === `${studentId}:${draft}`
+  const sendFeedback = () => { if (!comment.trim()) { feedback.notify({ tone: 'error', message: 'Write a short comment before sending feedback.' }); return }; update((current) => ({ ...current, sent: [...current.sent, `${studentId}: ${comment.trim()}`] })); setComment(''); notify(`Feedback sent to ${student.name}.`) }
+  // Sending reaches the student, so it is confirmed first (an empty comment still shows the existing message).
+  const askSendFeedback = () => comment.trim() ? feedback.confirm({ title: `Send feedback to ${student.name}?`, tone: 'sky', icon: <Send size={24} strokeWidth={2.4} />, description: `${student.name} will see your comment and practice recommendation.`, confirmLabel: 'Send feedback', confirmIcon: <Send size={18} />, busyLabel: 'Sending...', minBusyMs: 600, onConfirm: sendFeedback }) : sendFeedback()
   return <>
-    <PageHeader crumbs={[{ label: 'Learning gaps', onClick: () => setScreen('gaps') }, { label: 'Student profile' }]} title={student.name} description="Private teacher view · Class 4B · Math" actions={<Button icon={<Send size={15} />} onClick={sendFeedback}>Send feedback</Button>} />
+    <PageHeader crumbs={[{ label: 'Learning gaps', onClick: () => setScreen('gaps') }, { label: 'Student profile' }]} icon={<UserRound size={30} strokeWidth={2.4} />} tone="coral" title={student.name} description="Private teacher view · Class 4B · Math" actions={<Button icon={<Send size={18} />} onClick={() => askSendFeedback()}>Send feedback</Button>} />
     <div className="t-split">
       <Card padded={false} className="t-split-aside">
         <CardHeader title="Class 4B" action={<Badge>6 students</Badge>} />
@@ -918,14 +1051,14 @@ function StudentProfile({ data, update, setScreen, notify }: { data: Data; updat
           <Card>
             <CardHeader title="Teacher notes" description="Only teachers can see saved notes. These never appear in student or parent views." action={<Badge><Lock size={12} aria-hidden="true" /> Private</Badge>} />
             <TextArea label="Private note" rows={4} value={draft} onChange={setDraft} placeholder="What support does this student need?" />
-            <div className="t-actions"><Button variant="secondary" icon={<Check size={15} />} onClick={saveNote}>Save private note</Button></div>
+            <div className="t-actions"><Button variant="secondary" icon={<Check size={18} />} disabled={noteSaved} onClick={() => { saveNote(); setSavedNoteFor(`${studentId}:${draft}`) }}>Save private note</Button>{noteSaved && <span className="t-saved-note" role="status"><Check size={16} strokeWidth={2.8} aria-hidden="true" />Saved just now</span>}</div>
             {data.notes[studentId] && <p className="t-saved"><StickyNote size={14} aria-hidden="true" /> Saved note: {data.notes[studentId]}</p>}
           </Card>
           <Card>
             <CardHeader title="Send feedback" description="Individual support sent to the student." />
             <TextArea label={`Comment for ${student.name}`} rows={3} value={comment} onChange={setComment} placeholder="Write an encouraging, specific note." />
-            <div className="t-field"><label htmlFor="profile-practice">Practice recommendation</label><select id="profile-practice" className="t-input t-select"><option>Comparing fractions · 5 questions</option><option>Equivalent fractions · 5 questions</option><option>Adding fractions · 5 questions</option><option>Word problems · 5 questions</option></select></div>
-            <div className="t-actions"><Button icon={<Send size={15} />} onClick={sendFeedback}>Send comment and practice</Button></div>
+            <div className="t-field"><label htmlFor="profile-practice">Practice recommendation</label><select id="profile-practice" className="t-input t-select"><option value="Comparing fractions · 5 questions">Comparing fractions · 5 questions</option><option value="Equivalent fractions · 5 questions">Equivalent fractions · 5 questions</option><option value="Adding fractions · 5 questions">Adding fractions · 5 questions</option><option value="Word problems · 5 questions">Word problems · 5 questions</option></select></div>
+            <div className="t-actions"><Button icon={<Send size={18} />} onClick={() => askSendFeedback()}>Send comment and practice</Button></div>
           </Card>
         </div>
       </div>
@@ -938,14 +1071,15 @@ function StudentProfile({ data, update, setScreen, notify }: { data: Data; updat
  * ========================================================================== */
 
 function HelpInbox({ data, update, setScreen, notify }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
+  const feedback = useActionFeedback()
   const [selected, setSelected] = useState(data.help[0]?.id ?? ''); const [slot, setSlot] = useState('Tuesday, November 17 · 3:30 PM'); const [message, setMessage] = useState(''); const [practice, setPractice] = useState('Comparing fractions · 5 questions')
   const request = data.help.find((item) => item.id === selected) ?? data.help[0]
-  const occupiedSlots = new Set(data.help.filter((item) => item.id !== request?.id && item.booking).map((item) => item.booking)); const availableSlots = ['Tuesday, November 17 · 3:30 PM', 'Wednesday, November 18 · 2:00 PM', 'Thursday, November 19 · 3:00 PM'].filter((item) => !occupiedSlots.has(item)); const book = () => { if (!request || occupiedSlots.has(slot)) { notify('That office-hour slot is no longer available. Choose another time.'); return }; update((current) => ({ ...current, help: current.help.map((item) => item.id === request.id ? { ...item, status: 'Office hour booked', booking: slot } : item), sent: message.trim() ? [...current.sent, `${request.studentId}: ${message.trim()}`] : current.sent })); setMessage(''); notify(`Office hour booked for ${person(request.studentId).name} on ${slot}. The student has been notified.`) }
+  const occupiedSlots = new Set(data.help.filter((item) => item.id !== request?.id && item.booking).map((item) => item.booking)); const availableSlots = ['Tuesday, November 17 · 3:30 PM', 'Wednesday, November 18 · 2:00 PM', 'Thursday, November 19 · 3:00 PM'].filter((item) => !occupiedSlots.has(item)); const book = () => { if (!request || occupiedSlots.has(slot)) { feedback.notify({ tone: 'error', message: 'That office-hour slot is no longer available. Choose another time.' }); return }; update((current) => ({ ...current, help: current.help.map((item) => item.id === request.id ? { ...item, status: 'Office hour booked', booking: slot } : item), sent: message.trim() ? [...current.sent, `${request.studentId}: ${message.trim()}`] : current.sent })); setMessage(''); notify(`Office hour booked for ${person(request.studentId).name} on ${slot}. The student has been notified.`) }
   const sendPractice = () => { if (!request) return; update((current) => ({ ...current, help: current.help.map((item) => item.id === request.id ? { ...item, status: 'Practice sent' } : item), sent: [...current.sent, `${request.studentId}: ${practice}`] })); notify(`Practice recommendation sent to ${person(request.studentId).name}.`) }
   const sendReply = () => { if (!request || !message.trim()) return; update((current) => ({ ...current, help: current.help.map((item) => item.id === request.id ? { ...item, status: 'Replied' } : item), sent: [...current.sent, `${request.studentId}: ${message.trim()}`] })); setMessage(''); notify(`Reply sent privately to ${person(request.studentId).name}.`) }
   const newCount = data.help.filter((item) => item.status === 'New').length
   return <>
-    <PageHeader title="Help requests" description="A private place to respond, recommend practice, and book office hours." actions={<Button variant="ghost" onClick={() => setScreen('dashboard')}>Back to dashboard</Button>} />
+    <PageHeader icon={<Inbox size={30} strokeWidth={2.4} />} tone="sky" title="Help requests" description="A private place to respond, recommend practice, and book office hours." actions={<Button variant="ghost" icon={<Home size={18} />} onClick={() => setScreen('dashboard')}>Back to dashboard</Button>} />
     <div className="t-split">
       <Card padded={false} className="t-split-aside">
         <CardHeader title="Student requests" action={<Badge tone={newCount ? 'warning' : 'neutral'}>{newCount} new</Badge>} />
@@ -959,23 +1093,24 @@ function HelpInbox({ data, update, setScreen, notify }: { data: Data; update: (f
           <blockquote className="t-blockquote">{request.message}</blockquote>
         </div>
         <div className="t-card-section">
-          <h3 className="t-subheading"><Calendar size={15} aria-hidden="true" /> Book an office hour</h3>
+          <h3 className="t-subheading"><Calendar size={20} strokeWidth={2.4} aria-hidden="true" /> Book an office hour</h3>
+          {request.status === 'Office hour booked' && <Banner tone="ok" title="Office hour booked">{person(request.studentId).name} · {request.booking}. The student has been notified.</Banner>}
           <div className="t-field">
             <label htmlFor="help-slot">Office-hour slot</label>
-            <select id="help-slot" className="t-input t-select" value={slot} onChange={(event) => setSlot(event.target.value)}>{[...availableSlots, ...(request.booking && !availableSlots.includes(request.booking) ? [request.booking] : [])].map((availableSlot) => <option key={availableSlot}>{availableSlot}</option>)}</select>
+            <select id="help-slot" className="t-input t-select" value={slot} onChange={(event) => setSlot(event.target.value)}>{[...availableSlots, ...(request.booking && !availableSlots.includes(request.booking) ? [request.booking] : [])].map((availableSlot) => <option key={availableSlot} value={availableSlot}>{availableSlot}</option>)}</select>
             {availableSlots.length === 0 && !request.booking && <small className="t-hint">No office-hour slots are currently available.</small>}
           </div>
           <TextArea label="Optional message to student" rows={3} value={message} onChange={setMessage} placeholder="Add a private reply with the booking." />
           <div className="t-actions t-actions-end">
-            <Button variant="secondary" onClick={sendReply} disabled={!message.trim()}>Send reply</Button>
-            <Button icon={<Check size={15} />} onClick={book} disabled={request.status === 'Office hour booked' || (!availableSlots.includes(slot) && request.booking !== slot)}>{request.status === 'Office hour booked' ? `Booked · ${request.booking}` : 'Book office hour'}</Button>
+            <Button variant="secondary" onClick={() => request && feedback.confirm({ title: `Send this reply to ${person(request.studentId).name}?`, tone: 'sky', icon: <Send size={24} strokeWidth={2.4} />, description: 'The reply is private and only this student sees it.', confirmLabel: 'Send reply', confirmIcon: <Send size={18} />, busyLabel: 'Sending...', minBusyMs: 600, onConfirm: sendReply })} disabled={!message.trim()}>Send reply</Button>
+            <Button icon={<Check size={18} />} state={request.status === 'Office hour booked' ? 'done' : undefined} onClick={() => feedback.confirm({ title: 'Book this office hour?', tone: 'mint', icon: <Calendar size={24} strokeWidth={2.4} />, description: `${person(request.studentId).name} is notified about the booking${message.trim() ? ' and receives your message' : ''}.`, rows: [{ label: 'Student', value: person(request.studentId).name }, { label: 'Topic', value: request.topic }, { label: 'Slot', value: slot }], confirmLabel: 'Book office hour', confirmIcon: <Check size={18} />, busyLabel: 'Booking...', minBusyMs: 600, onConfirm: book })} disabled={!availableSlots.includes(slot) && request.booking !== slot}>{request.status === 'Office hour booked' ? `Booked · ${request.booking}` : 'Book office hour'}</Button>
           </div>
         </div>
         <div className="t-card-section">
           <h3 className="t-subheading"><BookOpen size={15} aria-hidden="true" /> Practice recommendation</h3>
           <div className="t-inline-form">
             <SelectField label="Choose practice" value={practice} options={['Comparing fractions · 5 questions', 'Equivalent fractions · 5 questions', 'Word problems · 5 questions']} onChange={setPractice} />
-            <Button variant="secondary" icon={<Send size={14} />} onClick={sendPractice}>Send practice</Button>
+            <Button variant="secondary" icon={<Send size={18} />} onClick={() => request && feedback.confirm({ title: `Send practice to ${person(request.studentId).name}?`, tone: 'sun', icon: <Send size={24} strokeWidth={2.4} />, description: `${practice} is added to the student's practice.`, confirmLabel: 'Send practice', confirmIcon: <Send size={18} />, busyLabel: 'Sending...', minBusyMs: 600, onConfirm: sendPractice })}>Send practice</Button>
           </div>
         </div>
       </Card> : <Card><EmptyState icon={<Inbox size={20} />} title="No help requests yet." description="New private requests from students will appear here." /></Card>}

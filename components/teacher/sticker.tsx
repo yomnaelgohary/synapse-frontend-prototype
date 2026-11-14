@@ -14,7 +14,7 @@
  */
 
 import type { ComponentType, ReactNode } from 'react'
-import { ArrowRight, Check, ChevronRight, ClipboardCheck, Lock, ScanLine, ShieldCheck, Upload } from 'lucide-react'
+import { ArrowRight, Check, ChevronRight, ClipboardCheck, Flag, Lock, ScanLine, ShieldCheck, Upload } from 'lucide-react'
 import { cx } from './ui'
 
 /* ------------------------------------------------------------------ hero */
@@ -22,8 +22,8 @@ import { cx } from './ui'
 export type SynaMascotComponent = ComponentType<{ size?: 'hero' | 'tip'; decorative?: boolean }>
 
 /** Lavender page hero: Syna, eyebrow chip, H1, helper line, controls and an action slot. */
-export function PageHero({ eyebrow, eyebrowIcon, title, helper, controls, action, Mascot }: { eyebrow: string; eyebrowIcon: ReactNode; title: string; helper: string; controls?: ReactNode; action?: ReactNode; Mascot?: SynaMascotComponent }) {
-  return <section className="ts-hero">
+export function PageHero({ eyebrow, eyebrowIcon, title, helper, controls, action, Mascot, tone = 'lavender' }: { eyebrow: string; eyebrowIcon: ReactNode; title: string; helper: string; controls?: ReactNode; action?: ReactNode; Mascot?: SynaMascotComponent; tone?: 'lavender' | 'sun' | 'coral' | 'sky' }) {
+  return <section className={cx('ts-hero', `ts-hero-${tone}`)}>
     {/* The mascot is decorative here; it reuses the student view's idle animations. */}
     {Mascot && <div className="ts-hero-mascot"><Mascot size="tip" decorative /></div>}
     <div className="ts-hero-copy">
@@ -74,6 +74,23 @@ export function MetaPill({ value, label }: { value: number; label: string }) {
 /** White info pill with an icon (hero context). */
 export function InfoPill({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return <span className="ts-info"><span aria-hidden="true">{icon}</span>{children}</span>
+}
+
+/** Workflow stage of an exam status: 1 Uploaded … 4 Released. */
+export const stageOf = (status: string) => status === 'Released' ? 4 : status === 'Awaiting confirmation' ? 3 : status === 'Text verification' ? 2 : 1
+
+/** Small 4-dot stage tracker under a status chip (decorative; the chip carries the text). */
+export function StageDots({ status }: { status: string }) {
+  const stage = stageOf(status)
+  return <span className="ts-dots" aria-hidden="true">{[1, 2, 3, 4].map((step) => <i key={step} className={step <= stage ? 'is-on' : ''} />)}</span>
+}
+
+/** Pass / below-pass total: icon + tint + hidden text, never colour alone. */
+export function ScorePill({ passed, children }: { passed: boolean; children: ReactNode }) {
+  return <span className={cx('ts-score', passed ? 'is-pass' : 'is-below')}>
+    {passed ? <Check size={16} strokeWidth={2.8} aria-hidden="true" /> : <Flag size={16} strokeWidth={2.6} aria-hidden="true" />}
+    {children}<span className="t-sr-only">{passed ? ' pass' : ' below pass mark'}</span>
+  </span>
 }
 
 /* -------------------------------------------------------------- stat card */

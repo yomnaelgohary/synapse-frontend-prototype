@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
-import { ArrowRight, Check, ClipboardList, Divide, Home, Hourglass, Languages, Lightbulb, MessageCircle, Search, Sparkles, Sprout, Star } from 'lucide-react'
+import { ArrowRight, Check, ClipboardList, Divide, Heart, Home, Hourglass, Languages, Lightbulb, MessageCircle, Search, Sparkles, Sprout, Star } from 'lucide-react'
 
 type Language = 'en' | 'de'
 type Quiz = { id: string; title: string; subject: string; date: string; score?: string; status: 'graded' | 'checking' }
@@ -14,10 +14,10 @@ const quizzes: Quiz[] = [
 
 const text = {
   en: {
-    eyebrow: 'My results', title: 'My submitted exams', description: 'Choose an exam to see your grade and feedback.', home: 'Home', status: 'Your teacher is checking your exam', checking: 'Your teacher is checking your exam', checkingDetail: 'Your grade and feedback will show here after your teacher has reviewed and released them.', confirmed: 'Grade confirmed and released', total: 'Your total', teacher: 'A note from Ms. Nadine', teacherNote: 'Great effort! You are getting better at finding equivalent fractions.', answers: 'Your answers', score: 'Score', correct: 'Correct', sure: 'You said you were sure', lookTitle: 'Look again', lookSummary: 'Take another look', myAnswer: 'Your answer', hint: 'Hint', solution: 'How to solve it', hintText: 'When the denominators are different, make them the same before you compare the numerators.', solutionText: '3/5 is larger than 2/5. The denominators are both 5, so compare the top numbers: 3 is greater than 2.', checkingDate: 'Submitted', questions: '3 questions', grades: 'Your grade', weakSkills: 'Skills to practise', skillHelp: 'These are small steps to help you feel more confident.', practiceTitle: 'Practice from your teacher', markDone: 'Mark as done', markedDone: 'Done', languageWord: 'A tricky word', germanWord: 'German', englishWord: 'English', teacherFeedback: 'Teacher feedback'
+    eyebrow: 'My results', title: 'My submitted exams', description: 'Choose an exam to see your grade and feedback.', home: 'Home', status: 'Your teacher is checking your exam', checking: 'Your teacher is checking your exam', checkingDetail: 'Your grade and feedback will show here after your teacher has reviewed and released them.', confirmed: 'Grade confirmed and released', total: 'Your total', teacher: 'A note from Ms. Nadine', teacherNote: 'Great effort! You are getting better at finding equivalent fractions.', answers: 'Your answers', score: 'Score', correct: 'Correct', sure: 'You said you were sure', lookTitle: 'Look again', lookSummary: 'Take another look', myAnswer: 'Your answer', hint: 'Hint', solution: 'How to solve it', hintText: 'When the denominators are different, make them the same before you compare the numerators.', solutionText: '3/5 is larger than 2/5. The denominators are both 5, so compare the top numbers: 3 is greater than 2.', checkingDate: 'Submitted', questions: '3 questions', grades: 'Your grade', weakSkills: 'Skills to practise', skillHelp: 'These are small steps to help you feel more confident.', practiceTitle: 'Practice from your teacher', markDone: 'Mark as done', markedDone: 'Done', languageWord: 'A tricky word', germanWord: 'German', englishWord: 'English', teacherFeedback: 'Teacher feedback', supportTitle: 'Notes from your teacher', supportNote: 'Ms. Nadine noticed this has been tricky in more than one quiz. You will practise it together, step by step.', supportEmpty: 'No notes from your teacher right now.'
   },
   de: {
-    eyebrow: 'Meine Ergebnisse', title: 'Meine abgegebenen Prüfungen', description: 'Wähle eine Prüfung aus, um deine Note und Rückmeldung anzusehen.', home: 'Startseite', status: 'Deine Lehrkraft prüft deine Prüfung', checking: 'Deine Lehrkraft prüft deine Prüfung', checkingDetail: 'Deine Note und Rückmeldung erscheinen hier, sobald deine Lehrkraft die Prüfung geprüft und freigegeben hat.', confirmed: 'Note bestätigt und freigegeben', total: 'Deine Gesamtnote', teacher: 'Eine Nachricht von Frau Nadine', teacherNote: 'Gut gemacht! Du findest immer besser gleichwertige Brüche.', answers: 'Deine Antworten', score: 'Punkte', correct: 'Richtig', sure: 'Du warst dir sicher', lookTitle: 'Noch einmal ansehen', lookSummary: 'Hinweis und Lösung ansehen', myAnswer: 'Deine Antwort', hint: 'Hinweis', solution: 'So löst du die Aufgabe', hintText: 'Wenn die Nenner unterschiedlich sind, bringe sie zuerst auf den gleichen Wert und vergleiche dann die Zähler.', solutionText: '3/5 ist größer als 2/5. Die Nenner sind beide 5. Vergleiche daher die Zähler: 3 ist größer als 2.', checkingDate: 'Abgegeben am', questions: '3 Fragen', grades: 'Deine Note', weakSkills: 'Meine Lernfelder', skillHelp: 'Kleine Schritte helfen dir, sicherer zu werden.', practiceTitle: 'Übungen von deiner Lehrkraft', markDone: 'Als erledigt markieren', markedDone: 'Erledigt', languageWord: 'Ein schwieriges Wort', germanWord: 'Deutsch', englishWord: 'Englisch', teacherFeedback: 'Rückmeldung der Lehrkraft'
+    eyebrow: 'Meine Ergebnisse', title: 'Meine abgegebenen Prüfungen', description: 'Wähle eine Prüfung aus, um deine Note und Rückmeldung anzusehen.', home: 'Startseite', status: 'Deine Lehrkraft prüft deine Prüfung', checking: 'Deine Lehrkraft prüft deine Prüfung', checkingDetail: 'Deine Note und Rückmeldung erscheinen hier, sobald deine Lehrkraft die Prüfung geprüft und freigegeben hat.', confirmed: 'Note bestätigt und freigegeben', total: 'Deine Gesamtnote', teacher: 'Eine Nachricht von Frau Nadine', teacherNote: 'Gut gemacht! Du findest immer besser gleichwertige Brüche.', answers: 'Deine Antworten', score: 'Punkte', correct: 'Richtig', sure: 'Du warst dir sicher', lookTitle: 'Noch einmal ansehen', lookSummary: 'Hinweis und Lösung ansehen', myAnswer: 'Deine Antwort', hint: 'Hinweis', solution: 'So löst du die Aufgabe', hintText: 'Wenn die Nenner unterschiedlich sind, bringe sie zuerst auf den gleichen Wert und vergleiche dann die Zähler.', solutionText: '3/5 ist größer als 2/5. Die Nenner sind beide 5. Vergleiche daher die Zähler: 3 ist größer als 2.', checkingDate: 'Abgegeben am', questions: '3 Fragen', grades: 'Deine Note', weakSkills: 'Meine Lernfelder', skillHelp: 'Kleine Schritte helfen dir, sicherer zu werden.', practiceTitle: 'Übungen von deiner Lehrkraft', markDone: 'Als erledigt markieren', markedDone: 'Erledigt', languageWord: 'Ein schwieriges Wort', germanWord: 'Deutsch', englishWord: 'Englisch', teacherFeedback: 'Rückmeldung der Lehrkraft', supportTitle: 'Hinweise von deiner Lehrkraft', supportNote: 'Frau Nadine hat gemerkt, dass das in mehr als einem Test schwierig war. Ihr übt es gemeinsam, Schritt für Schritt.', supportEmpty: 'Gerade gibt es keine Hinweise von deiner Lehrkraft.'
   }
 } as const
 
@@ -35,6 +35,15 @@ const friendlySkillLabels: Record<Language, Record<string, string>> = {
   en: { 'Comparing Fractions': 'Tell which fraction is bigger', 'Equivalent Fractions': 'Find fractions that mean the same amount', 'Adding Fractions': 'Put fractions together', 'Word Problems': 'Choose the right math step', 'Animal Habitats': 'Learn what animals need at home' },
   de: { 'Comparing Fractions': 'Erkenne, welcher Bruch größer ist', 'Equivalent Fractions': 'Finde Brüche mit demselben Wert', 'Adding Fractions': 'Brüche zusammenzählen', 'Word Problems': 'Finde den passenden Rechenschritt', 'Animal Habitats': 'Lerne, was Tiere zum Leben brauchen' },
 }
+
+/** Demo feedback on each wrong answer (FR 21) when no teacher data exists in this session. */
+const sampleWrongFeedback: Record<number, Record<Language, string>> = {
+  2: { en: 'Both fractions have 5 at the bottom, so compare the top numbers: 3 is bigger than 2. You are close!', de: 'Beide Brüche haben unten eine 5. Vergleiche die oberen Zahlen: 3 ist größer als 2. Du bist nah dran!' },
+}
+/** Demo red flags (FR 24): the confirmed one is shown as a supportive note, the dismissed one never is. */
+const sampleFlags = [{ studentId: 'malak', skill: 'Comparing Fractions', status: 'Confirmed' }, { studentId: 'malak', skill: 'Word Problems', status: 'Dismissed' }]
+/** Demo language error (FR: show the difficult word in German and English). */
+const sampleLanguageErrors: TeacherAnswer[] = [{ examId: 'quiz-2', studentId: 'malak', q: 1, cause: 'Language error', confirmed: true, score: 1, max: 3, feedbackEn: 'The word "größer" means "larger". Read it again: which fraction is larger?', feedbackDe: 'Das Wort „größer“ heißt auf Englisch „larger“. Lies noch einmal: Welcher Bruch ist größer?', germanKeyword: 'größer', englishTranslation: 'larger', keywords: [{ german: 'größer', english: 'larger' }, { german: 'Zähler', english: 'numerator' }] }]
 
 const sampleAssignments: PracticeAssignment[] = [
   { id: 'sample-compare-fractions', studentId: 'malak', skill: 'Comparing Fractions', exercises: ['Compare 3/4 and 2/3. Which is larger?', 'Make the bottom numbers the same for 2/5 and 3/5.'] },
@@ -62,13 +71,21 @@ export function StudentResults({ language, setScreen, SynaMascot, StatusTracker 
   const dataWeakSkills = teacherData?.answers
     ? teacherData.answers.filter((answer) => answer.studentId === 'malak' && answer.examId === selected.id && answer.confirmed && answer.cause === 'Concept error' && answer.score < answer.max).map((answer) => questionSkills[answer.q]).filter((skill): skill is string => Boolean(skill))
     : ['Comparing Fractions', 'Equivalent Fractions']
-  const flagSkills = teacherData?.flags?.filter((flag) => flag.studentId === 'malak' && flag.status === 'Confirmed').map((flag) => flag.skill) ?? []
+  // Only confirmed red flags reach the student (FR 24); dismissed ones are never shown.
+  const flags = teacherData?.flags ?? sampleFlags
+  const flagSkills = flags.filter((flag) => flag.studentId === 'malak' && flag.status === 'Confirmed').map((flag) => flag.skill)
   const weakSkills = [...new Set([...dataWeakSkills, ...flagSkills])]
   const assignments = teacherData?.practiceAssignments ?? sampleAssignments
   const assignedPractices = assignments.filter((assignment) => assignment.studentId === 'malak' && weakSkills.includes(assignment.skill))
   // German keyword list the teacher added (FR 54); older data stored a single pair.
   const keywordList = (answer: TeacherAnswer) => (answer.keywords ?? [{ german: answer.germanKeyword, english: answer.englishTranslation }]).filter((item) => item.german?.trim() && item.english?.trim())
-  const languageErrors = teacherData?.answers?.filter((answer) => answer.studentId === 'malak' && answer.examId === selected.id && (answer.cause === 'Language error' || keywordList(answer).length > 0)) ?? []
+  const languageErrors = (teacherData?.answers ?? sampleLanguageErrors).filter((answer) => answer.studentId === 'malak' && answer.examId === selected.id && (answer.cause === 'Language error' || keywordList(answer).length > 0))
+  // Teacher feedback for a wrong answer (FR 21): confirmed teacher data, else the demo feedback.
+  const wrongFeedback = (number: number) => {
+    const saved = teacherData?.answers?.find((answer) => answer.studentId === 'malak' && answer.examId === selected.id && answer.q === number - 1 && answer.confirmed)
+    if (saved) return saved.feedbackLanguage === 'German' ? saved.feedbackDe : saved.feedbackLanguage === 'English' ? saved.feedbackEn : language === 'de' ? saved.feedbackDe : saved.feedbackEn
+    return sampleWrongFeedback[number]?.[language]
+  }
   const friendlySkill = (skill: string) => friendlySkillLabels[language][skill] ?? skill
   const togglePracticeDone = (assignment: PracticeAssignment, index: number) => {
     setPracticeDone((current) => {
@@ -103,25 +120,29 @@ export function StudentResults({ language, setScreen, SynaMascot, StatusTracker 
       <div className="results-sticker-waiting-head"><div className="results-sticker-waiting-mascot"><SynaMascot size="tip" decorative /></div><span className="results-sticker-status checking"><Hourglass aria-hidden="true" />{formatTitle(selected)}</span><h2>{copy.checking}</h2><p>{copy.checkingDate} {selected.date}. {copy.checkingDetail}</p></div>
       <StatusTracker current={1} currentIcon={<Search aria-hidden="true" />} />
     </section> : <>
-      <section className="results-sticker-grade">
+      <section className="results-sticker-grade" id="results-grade">
         <span className="results-sticker-grade-orbit" aria-hidden="true" />
         <div className="results-sticker-grade-score"><span>{copy.total}</span><div className="results-sticker-score-label"><strong>8</strong><small>/ 10</small></div><span className="results-sticker-dots" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <i key={index} className={index < 8 ? 'earned' : ''} />)}</span><span className="results-sticker-confirmed"><Check aria-hidden="true" />{copy.confirmed}</span></div>
         <div className="results-sticker-note"><span className="results-sticker-note-icon"><MessageCircle aria-hidden="true" /></span><div><strong>{copy.teacher}</strong><p>{copy.teacherNote}</p></div></div>
       </section>
-      <section className="results-sticker-answers">
+      <section className="results-sticker-answers" id="results-feedback">
         <header className="results-sticker-section-head"><div><h2>{copy.answers}</h2><span className="results-sticker-question-chip">{copy.questions}</span></div><span className="results-sticker-score-label-head">{copy.score}</span></header>
         <ol className="results-sticker-answer-list">{answers.map((answer) => <li key={answer.number} className={`results-sticker-answer ${answer.correct ? 'correct' : 'needs-review'}`}>
           <div className="results-sticker-answer-top"><span className={`results-sticker-number ${answer.correct ? 'correct' : 'needs-review'}`}>{answer.number}</span><div className="results-sticker-question"><strong>{answer.question[language]}</strong><small>{copy.myAnswer}: <b>{answer.answer}</b></small></div><span className="results-sticker-answer-score">{answer.correct ? <Check aria-hidden="true" /> : <Sparkles aria-hidden="true" />}{answer.score}</span></div>
           {languageErrors.filter((item) => item.q === answer.number - 1).map((item) => <aside className="results-sticker-language-note" key={`${item.examId}-${item.q}`}><div className="results-sticker-language-title"><Languages aria-hidden="true" /><strong>{copy.languageWord}</strong></div>{(keywordList(item).length ? keywordList(item) : [{ german: '—', english: '—' }]).map((pair) => <div className="results-sticker-word-pair" key={pair.german}><div><span>{copy.germanWord}</span><strong>{pair.german}</strong></div><div><span>{copy.englishWord}</span><strong>{pair.english}</strong></div></div>)}<div className="results-sticker-feedback-pair">{item.feedbackLanguage !== 'German' && <p><span>English</span>{item.feedbackEn}</p>}{item.feedbackLanguage !== 'English' && <p><span>Deutsch</span>{item.feedbackDe}</p>}</div></aside>)}
+          {!answer.correct && wrongFeedback(answer.number) && <aside className="results-sticker-answer-feedback"><span className="results-sticker-answer-feedback-icon" aria-hidden="true"><MessageCircle /></span><div><strong>{copy.teacherFeedback}</strong><p>{wrongFeedback(answer.number)}</p></div></aside>}
           {!answer.correct && answer.sure && <details className="results-sticker-look-again"><summary><span className="results-sticker-bulb"><Lightbulb aria-hidden="true" /></span><span className="results-sticker-look-copy"><strong>{copy.lookTitle}</strong><small>{copy.sure}</small></span><span className="results-sticker-look-action">{copy.lookSummary}<ArrowRight aria-hidden="true" /></span></summary><div className="results-sticker-look-content"><div><span>{copy.myAnswer}</span><strong>{answer.answer}</strong></div><div><span>{copy.hint}</span><p>{copy.hintText}</p></div><div><span>{copy.solution}</span><p>{copy.solutionText}</p></div></div></details>}
         </li>)}</ol>
       </section>
       <section className="results-sticker-support" aria-labelledby="results-support-heading">
-        <header className="results-sticker-support-heading"><div><span className="results-sticker-eyebrow"><Sprout aria-hidden="true" />{copy.weakSkills}</span><h2 id="results-support-heading">{copy.skillHelp}</h2></div></header>
+        <header className="results-sticker-support-heading"><div><span className="results-sticker-eyebrow"><Sprout aria-hidden="true" />{copy.weakSkills}</span><h2 id="results-support-heading">{copy.weakSkills}</h2><p>{copy.skillHelp}</p></div></header>
         <div className="results-sticker-skills">
           {weakSkills.length ? weakSkills.map((skill) => <article className="results-sticker-skill" key={skill}><span className="results-sticker-skill-icon"><Sprout aria-hidden="true" /></span><div><strong>{friendlySkill(skill)}</strong><small>{language === 'de' ? `Wir üben: ${friendlySkill(skill).toLowerCase()}.` : `We are practising: ${friendlySkill(skill).toLowerCase()}.`}</small></div></article>) : <p className="results-sticker-empty">{language === 'de' ? 'Deine Lehrkraft hat noch keine Lernfelder markiert.' : 'Your teacher has not marked any skills to practise yet.'}</p>}
         </div>
-        {assignedPractices.length > 0 && <div className="results-sticker-practice-list"><h3>{copy.practiceTitle}</h3>{assignedPractices.map((assignment) => {
+        <div className="results-sticker-flag-notes" aria-labelledby="results-flag-notes-heading"><h3 id="results-flag-notes-heading">{copy.supportTitle}</h3>
+          {flagSkills.length ? flagSkills.map((skill) => <article className="results-sticker-flag-note" key={skill}><span className="results-sticker-flag-icon" aria-hidden="true"><Heart /></span><div><strong>{friendlySkill(skill)}</strong><p>{copy.supportNote}</p></div></article>) : <p className="results-sticker-empty">{copy.supportEmpty}</p>}
+        </div>
+        {assignedPractices.length > 0 && <div className="results-sticker-practice-list" id="results-practice"><h3>{copy.practiceTitle}</h3>{assignedPractices.map((assignment) => {
           const completed = practiceDone[assignment.id] ?? assignment.exercises.map(() => false)
           return <article className="results-sticker-practice" key={assignment.id}><h4>{friendlySkill(assignment.skill)}</h4><ol>{assignment.exercises.map((exercise, index) => <li key={`${assignment.id}-${index}`} className={completed[index] ? 'done' : ''}><span>{exercise}</span><button type="button" aria-pressed={completed[index]} aria-label={`${completed[index] ? copy.markedDone : copy.markDone}: ${exercise}`} onClick={() => togglePracticeDone(assignment, index)}><Check aria-hidden="true" />{completed[index] ? copy.markedDone : copy.markDone}</button></li>)}</ol></article>
         })}</div>}
