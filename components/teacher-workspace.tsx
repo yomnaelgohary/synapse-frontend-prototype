@@ -12,7 +12,9 @@ import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyS
 type Screen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
 type Student = { id: string; name: string }
 type Exam = { id: string; title: string; subject: string; className: string; language: 'English' | 'German'; date: string; modelFile: string; modelText: string; sureCheck: boolean; faces: boolean; status: string; released: boolean; questions?: Array<{ prompt: string; skill: string; max: number; expected: string }> }
-type Answer = { examId: string; studentId: string; q: number; response: string; sure: 'Sure' | 'Not sure' | 'Guessed'; score: number; ai: number; max: number; state: string; cause: string; confirmed: boolean; overrideReason: string; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; unreadable: boolean; verified: boolean; matched: string; missed: string; scan?: string }
+type Answer = { examId: string; studentId: string; q: number; response: string; sure: 'Sure' | 'Not sure' | 'Guessed'; score: number; ai: number; max: number; state: string; cause: string; confirmed: boolean; overrideReason: string; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; unreadable: boolean; verified: boolean; matched: string; missed: string; scan?: string; feedbackLanguage?: 'English' | 'German'; keywords?: KeywordPair[] }
+/** A hard German word from the answer and its English meaning, sent to the student as a word list (FR 54). */
+type KeywordPair = { german: string; english: string }
 type HelpRequest = { id: string; studentId: string; topic: string; message: string; status: string; booking: string }
 type FlagRecord = { id: string; studentId: string; skill: string; reason: string; answers: string; status: 'Pending' | 'Confirmed' | 'Dismissed'; comment: string }
 type PracticeAssignment = { id: string; studentId: string; skill: string; exercises: string[] }
@@ -92,6 +94,10 @@ const parseModelCriteria = (text: string): string[] => {
   })
   return criteria
 }
+/** Keyword list of an answer; older data stored a single germanKeyword/englishTranslation pair. */
+const keywordsOf = (answer: Answer): KeywordPair[] => answer.keywords ?? (answer.germanKeyword || answer.englishTranslation ? [{ german: answer.germanKeyword, english: answer.englishTranslation }] : [])
+/** Patch that stores the list and keeps the legacy single-pair fields equal to the first complete pair. */
+const keywordPatch = (list: KeywordPair[]): Partial<Answer> => { const first = list.find((item) => item.german.trim() && item.english.trim()); return { keywords: list, germanKeyword: first?.german.trim() ?? '', englishTranslation: first?.english.trim() ?? '' } }
 const person = (id: string) => students.find((student) => student.id === id) ?? students[0]
 
 const STORAGE_KEY = 'synapse-teacher-workflow-v1'
@@ -554,14 +560,27 @@ function VerifyText({ exam, exams, answers, update, setScreen, notify, setExam }
  * ========================================================================== */
 
 function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }: { exam: Exam; answers: Answer[]; data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void; setExam: (id: string) => void }) {
-  const [filter, setFilter] = useState<'priority' | 'all' | 'groups'>('priority'); const [question, setQuestion] = useState(0); const [editing, setEditing] = useState<string | null>(null); const [draftScore, setDraftScore] = useState(''); const [reason, setReason] = useState(''); const [language, setLanguage] = useState<'English' | 'German'>('English'); const [releaseConfirm, setReleaseConfirm] = useState(false); const [editModel, setEditModel] = useState(false); const [modelDraft, setModelDraft] = useState(exam.modelText)
+  const [filter, setFilter] = useState<'priority' | 'all' | 'groups'>('priority'); const [question, setQuestion] = useState(0); const [editing, setEditing] = useState<string | null>(null); const [draftScore, setDraftScore] = useState(''); const [reason, setReason] = useState(''); const [releaseConfirm, setReleaseConfirm] = useState(false); const [editModel, setEditModel] = useState(false); const [modelDraft, setModelDraft] = useState(exam.modelText)
   useEffect(() => setModelDraft(exam.modelText), [exam.id, exam.modelText])
   const examQuestions = questionsForExam(exam.id, data.exams); const examAnswers = answers.filter((item) => item.examId === exam.id && item.q === question && item.verified)
   const ordered = [...examAnswers].sort((a, b) => (a.state === 'Surprise mistake' ? -1 : 0) - (b.state === 'Surprise mistake' ? -1 : 0))
   const shown = filter === 'priority' ? ordered.filter((item) => item.state === 'Surprise mistake' || item.unreadable) : ordered
   const allExamAnswers = answers.filter((item) => item.examId === exam.id && item.verified)
-  const totals = students.map((student) => ({ student, total: answers.filter((item) => item.examId === exam.id && item.studentId === student.id && item.verified && item.confirmed).reduce((sum, item) => sum + item.score, 0) }))
-  const possible = examQuestions.reduce((sum, item) => sum + item.max, 0); const average = totals.length ? (totals.reduce((sum, item) => sum + item.total, 0) / totals.length).toFixed(1) : '0.0'; const passRate = totals.length ? Math.round(totals.filter((item) => item.total >= possible * .6).length / totals.length * 100) : 0
+  const totals = students.map((student) => {
+    const rows = answers.filter((item) => item.examId === exam.id && item.studentId === student.id)
+    const confirmedRows = rows.filter((item) => item.verified && item.confirmed)
+    // A paper counts toward class statistics only once every answer has a teacher-confirmed grade.
+    return { student, total: confirmedRows.reduce((sum, item) => sum + item.score, 0), confirmedCount: confirmedRows.length, answerCount: rows.length, graded: rows.length > 0 && confirmedRows.length === rows.length }
+  })
+  const possible = examQuestions.reduce((sum, item) => sum + item.max, 0)
+  const passMark = possible * .6
+  const gradedTotals = totals.filter((item) => item.graded)
+  const submittedCount = totals.filter((item) => item.answerCount > 0).length
+  // Average and pass rate use fully graded papers only; ungraded answers are not counted as zero.
+  const average = gradedTotals.length ? (gradedTotals.reduce((sum, item) => sum + item.total, 0) / gradedTotals.length).toFixed(1) : null
+  const passedCount = gradedTotals.filter((item) => item.total >= passMark).length
+  const passRate = gradedTotals.length ? Math.round(passedCount / gradedTotals.length * 100) : null
+  const statsBasis = gradedTotals.length ? `Based on ${gradedTotals.length} of ${submittedCount} fully graded ${submittedCount === 1 ? 'paper' : 'papers'}` : submittedCount ? 'No paper is fully graded yet' : 'No papers uploaded for this exam'
   const agreementItems = allExamAnswers.filter((item) => item.confirmed && !item.unreadable); const agreement = agreementItems.length ? Math.round(agreementItems.filter((item) => !item.overrideReason).length / agreementItems.length * 100) : 0
   const patchAnswer = (target: Answer, patch: Partial<Answer>) => update((current) => ({ ...current, answers: current.answers.map((item) => item.examId === target.examId && item.studentId === target.studentId && item.q === target.q ? { ...item, ...patch } : item) }))
   const saveModelAndRegrade = () => { if (!modelDraft.trim()) return; const overridden = answers.filter((item) => item.examId === exam.id && item.overrideReason).map((item) => person(item.studentId).name); const criteria = parseModelCriteria(modelDraft); update((current) => ({ ...current, exams: current.exams.map((item) => item.id === exam.id ? { ...item, modelText: modelDraft.trim(), questions: questionsForExam(item.id, current.exams).map((question, index) => ({ ...question, expected: criteria[index] ?? question.expected })) } : item), answers: current.answers.map((answer) => { if (answer.examId !== exam.id || !answer.verified || answer.confirmed || answer.overrideReason || answer.unreadable) return answer; const expected = criteria[answer.q] ?? ''; if (!expected) return answer; const terms = [...new Set(expected.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter((term) => term.length > 1); const responseTerms = new Set(answer.response.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []); const matchedTerms = terms.filter((term) => responseTerms.has(term)); const missedTerms = terms.filter((term) => !responseTerms.has(term)); const score = terms.length ? Math.min(answer.max, Math.round((matchedTerms.length / terms.length) * answer.max)) : answer.ai; const sure = answer.sure; const correct = score >= answer.max * .75; const state = correct ? sure === 'Sure' ? 'Secure' : 'Wobbly' : sure === 'Sure' ? 'Surprise mistake' : 'Known gap'; return { ...answer, ai: score, score, confirmed: false, state, cause: correct ? 'No issue' : answer.cause, matched: matchedTerms.length ? matchedTerms.join(', ') : 'No model-answer criteria matched', missed: missedTerms.length ? missedTerms.join(', ') : 'Nothing missed' } }), regradeChecks: [...new Set([...current.regradeChecks, ...overridden])] })); setEditModel(false); notify(`Regrade complete for ${answers.filter((item) => item.examId === exam.id && item.verified && !item.unreadable && !item.confirmed && !item.overrideReason).length} unconfirmed answers. Teacher-confirmed and overridden grades were preserved and flagged for a second check.`) }
@@ -570,7 +589,7 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
   const confirmGroup = (group: Answer[]) => { const pending = group.filter((item) => !item.confirmed); update((current) => ({ ...current, answers: current.answers.map((answer) => group.some((item) => item.studentId === answer.studentId && item.q === answer.q) && answer.examId === exam.id && !answer.confirmed ? { ...answer, score: answer.ai, confirmed: true, overrideReason: '' } : answer) })); notify(`${pending.length} unconfirmed matching answers confirmed. Existing teacher decisions were preserved.`) }
   const groups = useMemo(() => { const map = new Map<string, Answer[]>(); for (const answer of examAnswers.filter((item) => !item.unreadable)) map.set(answer.response.trim().toLowerCase(), [...(map.get(answer.response.trim().toLowerCase()) ?? []), answer]); return [...map.values()].filter((group) => group.length > 1) }, [examAnswers])
   const release = () => { const pending = answers.filter((item) => item.examId === exam.id && (!item.verified || !item.confirmed)); if (pending.length) { notify(`${pending.length} answers still need text verification and teacher grading before release.`); setReleaseConfirm(false); return } update((current) => ({ ...current, exams: current.exams.map((item) => item.id === exam.id ? { ...item, released: true, status: 'Released' } : item) })); setReleaseConfirm(false); notify('Confirmed grades released. Students have been notified.') }
-  const exportCsv = () => { const rows = [['Student', 'Exam', 'Total', 'State', 'Cause', 'Teacher confirmed'], ...totals.map(({ student, total }) => [student.name, exam.title, `${total} / ${possible}`, answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.state ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.cause ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.confirmed ? 'Yes' : 'No'])]; const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n'); const link = document.createElement('a'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.href = url; link.download = `${exam.id}-final-grades.csv`; link.click(); URL.revokeObjectURL(url); notify('Final grade spreadsheet downloaded.') }
+  const exportCsv = () => { const rows = [['Student', 'Exam', 'Total', 'State', 'Cause', 'Teacher confirmed'], ...totals.map(({ student, total, graded, answerCount }) => [student.name, exam.title, graded ? `${total} / ${possible}` : answerCount ? `${total} / ${possible} (in progress)` : 'No paper', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.state ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.cause ?? '', answers.find((item) => item.examId === exam.id && item.studentId === student.id && item.q === question)?.confirmed ? 'Yes' : 'No'])]; const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n'); const link = document.createElement('a'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.href = url; link.download = `${exam.id}-final-grades.csv`; link.click(); URL.revokeObjectURL(url); notify('Final grade spreadsheet downloaded.') }
   const copyGrades = <><Button variant="secondary" icon={<Download size={15} />} onClick={exportCsv}>Export grades</Button><Button icon={<Send size={15} />} onClick={() => setReleaseConfirm(true)} disabled={exam.released}>{exam.released ? 'Results released' : 'Release confirmed results'}</Button></>
   return <>
     <PageHeader crumbs={[examsCrumb(setScreen), { label: exam.title }, { label: 'Confirm grades' }]} title="Confirm AI grades" description={`${exam.title} · ${allExamAnswers.length} readable answers · teacher decisions are final.`} actions={copyGrades}>
@@ -599,17 +618,19 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
           </div>) : <EmptyState title="No matching answers in this question." />
         : shown.length ? shown.map((item) => item.unreadable
           ? <ManualGradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} onSave={(score, note) => { patchAnswer(item, { score, ai: 0, confirmed: true, overrideReason: note, state: 'Wobbly', cause: 'Unclear OCR reading', matched: 'Manually scored by teacher', missed: 'No automated grade was generated.', feedbackEn: 'Your answer was unreadable and has been graded by your teacher.' }); notify(`Manual grade saved for ${person(item.studentId).name}.`) }} />
-          : <GradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} language={language} setLanguage={setLanguage} onConfirm={() => confirm(item)} onEdit={() => { setEditing(`${item.studentId}-${item.q}`); setDraftScore(String(item.score)); setReason('') }} onPatch={(patch) => patchAnswer(item, patch)} editing={editing === `${item.studentId}-${item.q}`} draftScore={draftScore} setDraftScore={setDraftScore} reason={reason} setReason={setReason} onSaveOverride={() => saveOverride(item)} onCancel={() => setEditing(null)} />)
+          : <GradeCard key={`${item.studentId}-${item.q}`} answer={item} question={examQuestions[question]} onConfirm={() => confirm(item)} onEdit={() => { setEditing(`${item.studentId}-${item.q}`); setDraftScore(String(item.score)); setReason('') }} onPatch={(patch) => patchAnswer(item, patch)} editing={editing === `${item.studentId}-${item.q}`} draftScore={draftScore} setDraftScore={setDraftScore} reason={reason} setReason={setReason} onSaveOverride={() => saveOverride(item)} onCancel={() => setEditing(null)} />)
           : <EmptyState icon={<Check size={20} />} title="No surprise mistakes waiting." description="Switch to All answers to review other responses." action={<Button variant="secondary" onClick={() => setFilter('all')}>Show all answers</Button>} />}
     </Card>
 
     <h2 className="t-section-title">Results summary</h2>
     <div className="t-grid t-grid-summary">
-      <StatCard label="Class average" value={`${average} / ${possible}`} detail="Calculated from current teacher scores" icon={<Users size={18} />} />
-      <StatCard label="Pass rate" value={`${passRate}%`} detail="60% or higher" icon={<Check size={18} />} />
+      <StatCard label="Class average" value={average === null ? '—' : `${average} / ${possible}`} detail={statsBasis} icon={<Users size={18} />} />
+      <StatCard label="Pass rate" value={passRate === null ? '—' : `${passRate}%`} detail={passRate === null ? `Pass mark: ${Number.isInteger(passMark) ? passMark : passMark.toFixed(1)} / ${possible} (60%)` : `${passedCount} of ${gradedTotals.length} passed · pass mark ${Number.isInteger(passMark) ? passMark : passMark.toFixed(1)} / ${possible} (60%)`} icon={<Check size={18} />} />
       <Card padded={false}>
         <CardHeader title="Student totals" />
-        <ul className="t-kv-list">{totals.map(({ student, total }) => <li key={student.id}><span>{student.name}</span><strong>{total} / {possible}</strong></li>)}</ul>
+        <ul className="t-kv-list">{totals.map(({ student, total, graded, confirmedCount, answerCount }) => <li key={student.id}><span>{student.name}</span>{graded
+          ? <span className="t-total"><Badge tone={total >= passMark ? 'success' : 'danger'}>{total >= passMark ? 'Pass' : 'Below pass'}</Badge><strong>{total} / {possible}</strong></span>
+          : <small className="t-muted">{answerCount ? `In progress · ${confirmedCount} of ${answerCount} confirmed` : 'No paper'}</small>}</li>)}</ul>
       </Card>
       <Card padded={false}>
         <CardHeader title="Second check" description="Teacher-overridden grades awaiting review" action={<Badge tone={data.regradeChecks.length ? 'warning' : 'neutral'}>{data.regradeChecks.length}</Badge>} />
@@ -629,8 +650,10 @@ function StateGuide() {
   return <details className="t-disclosure"><summary><CircleHelp size={14} aria-hidden="true" /> What do the states mean?</summary><p>{stateHelp}</p></details>
 }
 
-function GradeCard({ answer, question, language, setLanguage, onConfirm, onEdit, onPatch, editing, draftScore, setDraftScore, reason, setReason, onSaveOverride, onCancel }: { answer: Answer; question: { prompt: string; skill: string; max: number; expected: string }; language: 'English' | 'German'; setLanguage: (value: 'English' | 'German') => void; onConfirm: () => void; onEdit: () => void; onPatch: (patch: Partial<Answer>) => void; editing: boolean; draftScore: string; setDraftScore: (value: string) => void; reason: string; setReason: (value: string) => void; onSaveOverride: () => void; onCancel: () => void }) {
+function GradeCard({ answer, question, onConfirm, onEdit, onPatch, editing, draftScore, setDraftScore, reason, setReason, onSaveOverride, onCancel }: { answer: Answer; question: { prompt: string; skill: string; max: number; expected: string }; onConfirm: () => void; onEdit: () => void; onPatch: (patch: Partial<Answer>) => void; editing: boolean; draftScore: string; setDraftScore: (value: string) => void; reason: string; setReason: (value: string) => void; onSaveOverride: () => void; onCancel: () => void }) {
   const name = person(answer.studentId).name
+  // Each answer has its own feedback language (FR 54: written in English OR German).
+  const language = answer.feedbackLanguage ?? 'English'
   return <article className={cx('t-grade', answer.state === 'Surprise mistake' && 'is-priority')}>
     <header className="t-grade-head">
       <Avatar name={name} />
@@ -651,7 +674,7 @@ function GradeCard({ answer, question, language, setLanguage, onConfirm, onEdit,
       </div>
       <div className="t-grade-classify">
         <SelectField label="Understanding state" value={answer.state} options={['Secure', 'Wobbly', 'Known gap', 'Surprise mistake']} onChange={(value) => onPatch({ state: value })} />
-        <SelectField label="Suggested cause" value={answer.cause} options={['Concept error', 'Language error', 'Careless slip', 'Unclear OCR reading', 'No issue']} onChange={(value) => { const terms = languageTermsByQuestion[answer.q] ?? languageTermsByQuestion[0]; onPatch(value === 'Language error' ? { cause: value, germanKeyword: answer.germanKeyword || terms.german, englishTranslation: answer.englishTranslation || terms.english } : { cause: value }) }} />
+        <SelectField label="Suggested cause" value={answer.cause} options={['Concept error', 'Language error', 'Careless slip', 'Unclear OCR reading', 'No issue']} onChange={(value) => { const terms = languageTermsByQuestion[answer.q] ?? languageTermsByQuestion[0]; onPatch(value === 'Language error' && !keywordsOf(answer).length ? { cause: value, ...keywordPatch([terms]) } : { cause: value }) }} />
         <StateGuide />
       </div>
     </div>
@@ -664,14 +687,20 @@ function GradeCard({ answer, question, language, setLanguage, onConfirm, onEdit,
       <div className="t-actions"><Button variant="secondary" onClick={onCancel}>Cancel</Button><Button onClick={onSaveOverride} disabled={!reason.trim() || !draftScore || Number(draftScore) < 0 || Number(draftScore) > answer.max}>Save teacher grade</Button></div>
     </div>}
 
-    <div className="t-feedback">
-      <div className="t-feedback-head"><strong><MessageSquare size={15} aria-hidden="true" /> Suggested feedback</strong><Segmented label="Feedback language" value={language} onChange={setLanguage} options={[{ value: 'English', label: 'English' }, { value: 'German', label: 'Deutsch' }]} /></div>
-      <TextArea rows={2} ariaLabel={`Feedback for ${name}`} value={language === 'English' ? answer.feedbackEn : answer.feedbackDe} onChange={(value) => onPatch(language === 'English' ? { feedbackEn: value } : { feedbackDe: value })} />
-      <div className="t-feedback-actions">
-        <Button variant="ghost" size="sm" onClick={() => onPatch(language === 'English' ? { feedbackEn: 'Try comparing the numerators when denominators match.' } : { feedbackDe: 'Vergleiche die Zähler, wenn die Nenner gleich sind.' })}>Accept suggestion</Button>
-        {answer.cause === 'Language error' && <div className="t-inset-grid"><TextField label="German keyword" value={answer.germanKeyword} onChange={(value) => onPatch({ germanKeyword: value })} /><TextField label="English translation" value={answer.englishTranslation} onChange={(value) => onPatch({ englishTranslation: value })} /></div>}
+    <section className="t-message" aria-label={`Message to ${name}`}>
+      <div className="t-feedback">
+        <div className="t-feedback-head">
+          <strong><MessageSquare size={15} aria-hidden="true" /> Feedback</strong>
+          <Segmented label="Write feedback in" value={language} onChange={(value) => onPatch({ feedbackLanguage: value })} options={[{ value: 'English', label: 'English' }, { value: 'German', label: 'Deutsch' }]} />
+        </div>
+        <TextArea rows={3} ariaLabel={`Feedback for ${name} in ${language}`} value={language === 'English' ? answer.feedbackEn : answer.feedbackDe} onChange={(value) => onPatch(language === 'English' ? { feedbackEn: value } : { feedbackDe: value })} placeholder={language === 'English' ? 'Write your feedback in English.' : 'Schreibe dein Feedback auf Deutsch.'} />
+        <div className="t-feedback-actions">
+          <small className="t-hint">{name.split(' ')[0]} receives this feedback in {language === 'English' ? 'English' : 'German'}.</small>
+          <Button variant="ghost" size="sm" onClick={() => onPatch(language === 'English' ? { feedbackEn: 'Try comparing the numerators when denominators match.' } : { feedbackDe: 'Vergleiche die Zähler, wenn die Nenner gleich sind.' })}>Accept suggestion</Button>
+        </div>
       </div>
-    </div>
+      <KeywordGlossary answer={answer} name={name} suggestion={languageTermsByQuestion[answer.q] ?? languageTermsByQuestion[0]} onChange={(list) => onPatch(keywordPatch(list))} />
+    </section>
 
     <footer className="t-grade-foot">
       {answer.overrideReason ? <Badge tone="warning">Teacher grade: {answer.score}/{answer.max} · {answer.overrideReason}</Badge> : <span />}
@@ -681,6 +710,51 @@ function GradeCard({ answer, question, language, setLanguage, onConfirm, onEdit,
       </div>
     </footer>
   </article>
+}
+
+/**
+ * German keyword list for one answer (FR 54): hard German words and their
+ * English translation, kept apart from the feedback and sent to the student
+ * as a word list. Only complete pairs are sent.
+ */
+function KeywordGlossary({ answer, name, suggestion, onChange }: { answer: Answer; name: string; suggestion: KeywordPair; onChange: (list: KeywordPair[]) => void }) {
+  const list = keywordsOf(answer)
+  const [touched, setTouched] = useState<Set<string>>(new Set())
+  const touch = (key: string) => setTouched((current) => current.has(key) ? current : new Set(current).add(key))
+  const updateRow = (index: number, patch: Partial<KeywordPair>) => onChange(list.map((item, i) => i === index ? { ...item, ...patch } : item))
+  const hasSuggestion = !list.some((item) => item.german.trim().toLowerCase() === suggestion.german.toLowerCase())
+  const errorFor = (index: number, field: 'german' | 'english') => {
+    const row = list[index]
+    if (!touched.has(`${index}-${field}`)) return undefined
+    if (field === 'german') {
+      if (!row.german.trim() && row.english.trim()) return 'Add the German keyword.'
+      if (row.german.trim() && list.some((item, i) => i < index && item.german.trim().toLowerCase() === row.german.trim().toLowerCase())) return 'This keyword is already in the list.'
+    }
+    if (field === 'english' && row.german.trim() && !row.english.trim()) return 'Add the English translation.'
+    return undefined
+  }
+  const complete = list.filter((item) => item.german.trim() && item.english.trim()).length
+  const idBase = `kw-${answer.examId}-${answer.studentId}-${answer.q}`
+  return <div className="t-glossary">
+    <div className="t-feedback-head">
+      <strong><Languages size={15} aria-hidden="true" /> German keywords</strong>
+      {list.length > 0 && <Badge tone={complete ? 'accent' : 'neutral'}>{complete} to send</Badge>}
+    </div>
+    <p className="t-hint">Hard German words from this answer, each with its English translation. {name.split(' ')[0]} sees them as a separate word list, not as part of the feedback.</p>
+    {list.length > 0 && <div className="t-glossary-list">
+      <div className="t-glossary-labels" aria-hidden="true"><span>German keyword</span><span>English translation</span></div>
+      {list.map((item, index) => <div className="t-glossary-row" key={index}>
+        <TextField id={`${idBase}-${index}-de`} label={`German keyword ${index + 1}`} value={item.german} placeholder="z. B. Zähler" onChange={(value) => updateRow(index, { german: value })} onBlur={() => touch(`${index}-german`)} error={errorFor(index, 'german')} />
+        <ArrowRight size={14} className="t-glossary-arrow" aria-hidden="true" />
+        <TextField id={`${idBase}-${index}-en`} label={`English translation ${index + 1}`} value={item.english} placeholder="e.g. numerator" onChange={(value) => updateRow(index, { english: value })} onBlur={() => touch(`${index}-english`)} error={errorFor(index, 'english')} />
+        <Button variant="ghost" size="sm" ariaLabel={`Remove keyword ${item.german || index + 1}`} icon={<Trash2 size={14} />} onClick={() => onChange(list.filter((_, i) => i !== index))} />
+      </div>)}
+    </div>}
+    <div className="t-actions">
+      <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => onChange([...list, { german: '', english: '' }])}>Add keyword</Button>
+      {hasSuggestion && <button type="button" className="t-suggest-chip" onClick={() => onChange([...list.filter((item) => item.german.trim() || item.english.trim()), suggestion])}><Sparkles size={13} aria-hidden="true" />Suggested: {suggestion.german} → {suggestion.english}</button>}
+    </div>
+  </div>
 }
 
 function ManualGradeCard({ answer, question, onSave }: { answer: Answer; question: { prompt: string; skill: string; max: number; expected: string }; onSave: (score: number, reason: string) => void }) {

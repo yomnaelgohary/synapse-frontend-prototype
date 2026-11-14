@@ -27,7 +27,7 @@ const answers = [
   { number: 3, question: { en: 'Which fraction is equivalent to 1/2?', de: 'Welcher Bruch entspricht 1/2?' }, answer: '4/8', score: '4 / 4', correct: true }
 ]
 
-type TeacherAnswer = { examId: string; studentId: string; q: number; cause: string; confirmed: boolean; score: number; max: number; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string }
+type TeacherAnswer = { examId: string; studentId: string; q: number; cause: string; confirmed: boolean; score: number; max: number; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; feedbackLanguage?: 'English' | 'German'; keywords?: Array<{ german: string; english: string }> }
 type PracticeAssignment = { id: string; studentId: string; skill: string; exercises: string[] }
 type TeacherData = { answers?: TeacherAnswer[]; practiceAssignments?: PracticeAssignment[]; flags?: Array<{ studentId: string; skill: string; status: string }> }
 
@@ -66,7 +66,9 @@ export function StudentResults({ language, setScreen, SynaMascot, StatusTracker 
   const weakSkills = [...new Set([...dataWeakSkills, ...flagSkills])]
   const assignments = teacherData?.practiceAssignments ?? sampleAssignments
   const assignedPractices = assignments.filter((assignment) => assignment.studentId === 'malak' && weakSkills.includes(assignment.skill))
-  const languageErrors = teacherData?.answers?.filter((answer) => answer.studentId === 'malak' && answer.examId === selected.id && answer.cause === 'Language error') ?? []
+  // German keyword list the teacher added (FR 54); older data stored a single pair.
+  const keywordList = (answer: TeacherAnswer) => (answer.keywords ?? [{ german: answer.germanKeyword, english: answer.englishTranslation }]).filter((item) => item.german?.trim() && item.english?.trim())
+  const languageErrors = teacherData?.answers?.filter((answer) => answer.studentId === 'malak' && answer.examId === selected.id && (answer.cause === 'Language error' || keywordList(answer).length > 0)) ?? []
   const friendlySkill = (skill: string) => friendlySkillLabels[language][skill] ?? skill
   const togglePracticeDone = (assignment: PracticeAssignment, index: number) => {
     setPracticeDone((current) => {
@@ -110,7 +112,7 @@ export function StudentResults({ language, setScreen, SynaMascot, StatusTracker 
         <header className="results-sticker-section-head"><div><h2>{copy.answers}</h2><span className="results-sticker-question-chip">{copy.questions}</span></div><span className="results-sticker-score-label-head">{copy.score}</span></header>
         <ol className="results-sticker-answer-list">{answers.map((answer) => <li key={answer.number} className={`results-sticker-answer ${answer.correct ? 'correct' : 'needs-review'}`}>
           <div className="results-sticker-answer-top"><span className={`results-sticker-number ${answer.correct ? 'correct' : 'needs-review'}`}>{answer.number}</span><div className="results-sticker-question"><strong>{answer.question[language]}</strong><small>{copy.myAnswer}: <b>{answer.answer}</b></small></div><span className="results-sticker-answer-score">{answer.correct ? <Check aria-hidden="true" /> : <Sparkles aria-hidden="true" />}{answer.score}</span></div>
-          {languageErrors.filter((item) => item.q === answer.number - 1).map((item) => <aside className="results-sticker-language-note" key={`${item.examId}-${item.q}`}><div className="results-sticker-language-title"><Languages aria-hidden="true" /><strong>{copy.languageWord}</strong></div><div className="results-sticker-word-pair"><div><span>{copy.germanWord}</span><strong>{item.germanKeyword || '—'}</strong></div><div><span>{copy.englishWord}</span><strong>{item.englishTranslation || '—'}</strong></div></div><div className="results-sticker-feedback-pair"><p><span>English</span>{item.feedbackEn}</p><p><span>Deutsch</span>{item.feedbackDe}</p></div></aside>)}
+          {languageErrors.filter((item) => item.q === answer.number - 1).map((item) => <aside className="results-sticker-language-note" key={`${item.examId}-${item.q}`}><div className="results-sticker-language-title"><Languages aria-hidden="true" /><strong>{copy.languageWord}</strong></div>{(keywordList(item).length ? keywordList(item) : [{ german: '—', english: '—' }]).map((pair) => <div className="results-sticker-word-pair" key={pair.german}><div><span>{copy.germanWord}</span><strong>{pair.german}</strong></div><div><span>{copy.englishWord}</span><strong>{pair.english}</strong></div></div>)}<div className="results-sticker-feedback-pair">{item.feedbackLanguage !== 'German' && <p><span>English</span>{item.feedbackEn}</p>}{item.feedbackLanguage !== 'English' && <p><span>Deutsch</span>{item.feedbackDe}</p>}</div></aside>)}
           {!answer.correct && answer.sure && <details className="results-sticker-look-again"><summary><span className="results-sticker-bulb"><Lightbulb aria-hidden="true" /></span><span className="results-sticker-look-copy"><strong>{copy.lookTitle}</strong><small>{copy.sure}</small></span><span className="results-sticker-look-action">{copy.lookSummary}<ArrowRight aria-hidden="true" /></span></summary><div className="results-sticker-look-content"><div><span>{copy.myAnswer}</span><strong>{answer.answer}</strong></div><div><span>{copy.hint}</span><p>{copy.hintText}</p></div><div><span>{copy.solution}</span><p>{copy.solutionText}</p></div></div></details>}
         </li>)}</ol>
       </section>
