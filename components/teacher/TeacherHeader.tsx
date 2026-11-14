@@ -8,7 +8,7 @@
  * so teachers always know where they are (Nielsen #1, #6).
  */
 
-import { Bell, ClipboardList, Inbox, Languages, LayoutDashboard, Sparkles, Target } from 'lucide-react'
+import { Bell, ClipboardList, Inbox, Languages, LayoutDashboard, LogOut, Sparkles, Target } from 'lucide-react'
 import { cx } from './ui'
 
 export type TeacherScreen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
@@ -17,6 +17,8 @@ export type TeacherScreen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grade
 export type TeacherChrome = {
   language: 'EN' | 'DE'
   onLanguageChange: (language: 'EN' | 'DE') => void
+  /** Back to the login screen without reloading, so this session's demo data is kept. */
+  onSignOut?: () => void
 }
 
 /** Primary sections and the screens that belong to each one. */
@@ -55,6 +57,7 @@ export function TeacherHeader({ screen, onNavigate, helpCount, chrome }: { scree
           <Bell size={18} aria-hidden="true" />{helpCount > 0 && <b aria-hidden="true">{helpCount}</b>}
         </button>
         <span className="t-user"><span className="t-avatar t-avatar-sm" aria-hidden="true">N</span><span className="t-user-name">Ms. Nadine</span></span>
+        {chrome?.onSignOut && <button type="button" className="t-icon-btn" onClick={chrome.onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} aria-hidden="true" /></button>}
       </div>
     </div>
   </header>
