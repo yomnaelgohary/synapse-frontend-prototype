@@ -14,7 +14,8 @@ type Exam = { id: string; title: string; subject: string; className: string; lan
 type Answer = { examId: string; studentId: string; q: number; response: string; sure: 'Sure' | 'Not sure' | 'Guessed'; score: number; ai: number; max: number; state: string; cause: string; confirmed: boolean; overrideReason: string; feedbackEn: string; feedbackDe: string; germanKeyword: string; englishTranslation: string; unreadable: boolean; verified: boolean; matched: string; missed: string }
 type HelpRequest = { id: string; studentId: string; topic: string; message: string; status: string; booking: string }
 type FlagRecord = { id: string; studentId: string; skill: string; reason: string; answers: string; status: 'Pending' | 'Confirmed' | 'Dismissed'; comment: string }
-type Data = { exams: Exam[]; answers: Answer[]; help: HelpRequest[]; flags: FlagRecord[]; notes: Record<string, string>; sent: string[]; regradeChecks: string[] }
+type PracticeAssignment = { id: string; studentId: string; skill: string; exercises: string[] }
+type Data = { exams: Exam[]; answers: Answer[]; help: HelpRequest[]; flags: FlagRecord[]; notes: Record<string, string>; sent: string[]; regradeChecks: string[]; practiceAssignments: PracticeAssignment[] }
 
 const students: Student[] = [
   { id: 'malak', name: 'Malak Adel' }, { id: 'omar', name: 'Omar Khaled' }, { id: 'laila', name: 'Laila Samir' },
@@ -24,6 +25,11 @@ const questions = [
   { prompt: 'Which fraction is larger: 3/4 or 2/3?', skill: 'Comparing Fractions', max: 3, expected: '3/4 is larger because 9/12 is greater than 8/12.' },
   { prompt: 'Which fraction is equivalent to 1/2?', skill: 'Equivalent Fractions', max: 3, expected: '4/8 is equivalent to 1/2.' },
   { prompt: 'What is 5/8 + 1/8?', skill: 'Adding Fractions', max: 4, expected: '5/8 + 1/8 = 6/8.' },
+]
+const languageTermsByQuestion = [
+  { german: 'größer', english: 'larger' },
+  { german: 'gleichwertig', english: 'equivalent' },
+  { german: 'Summe', english: 'sum' },
 ]
 const initialExams: Exam[] = [
   { id: 'quiz-3', title: 'Math Quiz 3: Fractions', subject: 'Math', className: 'Class 4B', language: 'English', date: '2026-10-18', modelFile: 'model-answer-fractions.pdf', modelText: questions.map((item, index) => `Q${index + 1}: ${item.expected}`).join('\n'), sureCheck: true, faces: false, status: 'Text verification', released: false },
@@ -57,6 +63,10 @@ const initialData: Data = {
     { id: 'flag-1', studentId: 'malak', skill: 'Comparing Fractions', reason: 'Surprise mistakes repeated across Math Quiz 2 and Math Quiz 3.', answers: 'Math Quiz 2 · Q2; Math Quiz 3 · Q1', status: 'Pending', comment: '' },
     { id: 'flag-2', studentId: 'omar', skill: 'Word Problems', reason: 'Known gaps repeated in the same skill across two exams.', answers: 'Math Quiz 2 · Q4; Science Quiz 2 · Q3', status: 'Pending', comment: '' },
   ], notes: {}, sent: [], regradeChecks: [],
+  practiceAssignments: [
+    { id: 'practice-mal-compare', studentId: 'malak', skill: 'Comparing Fractions', exercises: ['Compare 3/4 and 2/3. Which is larger?', 'Make the bottom numbers the same for 2/5 and 3/5.'] },
+    { id: 'practice-mal-equivalent', studentId: 'malak', skill: 'Equivalent Fractions', exercises: ['Write an equivalent fraction for 1/2.', 'Complete: 2/4 = __ / 8.'] },
+  ],
 }
 const stateHelp = 'Secure: correct and sure. Wobbly: correct but unsure, or guessed. Known gap: incorrect and unsure. Surprise mistake: incorrect despite feeling sure.'
 const questionsForExam = (examId: string, exams: Exam[] = initialExams) => exams.find((item) => item.id === examId)?.questions ?? (examId === 'science-2' ? [{ prompt: 'What does a habitat provide?', skill: 'Animal Habitats', max: 4, expected: 'Food, water, and shelter.' }, ...questions.slice(1)] : questions)
@@ -447,7 +457,7 @@ function GradeCard({ answer, question, language, setLanguage, onConfirm, onEdit,
       </div>
       <div className="t-grade-classify">
         <SelectField label="Understanding state" value={answer.state} options={['Secure', 'Wobbly', 'Known gap', 'Surprise mistake']} onChange={(value) => onPatch({ state: value })} />
-        <SelectField label="Suggested cause" value={answer.cause} options={['Concept error', 'Language error', 'Careless slip', 'Unclear OCR reading', 'No issue']} onChange={(value) => onPatch({ cause: value })} />
+        <SelectField label="Suggested cause" value={answer.cause} options={['Concept error', 'Language error', 'Careless slip', 'Unclear OCR reading', 'No issue']} onChange={(value) => { const terms = languageTermsByQuestion[answer.q] ?? languageTermsByQuestion[0]; onPatch(value === 'Language error' ? { cause: value, germanKeyword: answer.germanKeyword || terms.german, englishTranslation: answer.englishTranslation || terms.english } : { cause: value }) }} />
         <StateGuide />
       </div>
     </div>
@@ -512,7 +522,14 @@ function LearningGaps({ data, update, setScreen, notify }: { data: Data; update:
   const skills = [...new Set([...questionsForExam(exam.id, data.exams).map((item) => item.skill), 'Word Problems'])]
   const actionFlag = (id: string, status: 'Confirmed' | 'Dismissed', comment = '') => { update((current) => ({ ...current, flags: current.flags.map((item) => item.id === id ? { ...item, status, comment } : item) })); setDismissId(null); setDismissComment(''); notify(status === 'Confirmed' ? 'Red flag confirmed. This support note is now visible to the student and parent.' : 'Red flag dismissed. It will not be shown to the student or parent.') }
   const concepts = skills.map((skill) => ({ skill, concept: data.answers.filter((item) => questionsForExam(item.examId, data.exams)[item.q]?.skill === skill && item.confirmed && item.cause === 'Concept error').length, language: data.answers.filter((item) => questionsForExam(item.examId, data.exams)[item.q]?.skill === skill && item.confirmed && item.cause === 'Language error').length }))
-  const sendPractice = () => { setSent(true); notify(`Practice for ${reteachSkill} sent to the whole class.`) }
+  const exerciseBank: Record<string, string[]> = { 'Comparing Fractions': ['Compare 3/4 and 2/3. Which is larger?', 'Make the bottom numbers the same for 2/5 and 3/5.', 'Explain why 3/5 is larger than 2/5.'], 'Equivalent Fractions': ['Write an equivalent fraction for 1/2.', 'Complete: 2/4 = __ / 8.', 'Circle the fraction equal to 3/6.'], 'Adding Fractions': ['Add 2/8 and 3/8.', 'What is 5/8 + 1/8?', 'Draw a picture to show 1/4 + 2/4.'], 'Word Problems': ['Read the question and circle the numbers you need.', 'Choose whether to add or subtract.', 'Write one sentence to explain your answer.'], 'Animal Habitats': ['Name one thing an animal needs from its habitat.', 'Match an animal to its home.', 'Draw a habitat with food, water, and shelter.'] }
+  const sendPractice = () => {
+    const exercises = exerciseBank[reteachSkill] ?? [`Try one example about ${reteachSkill}.`, `Explain how you solved a ${reteachSkill.toLowerCase()} question.`]
+    const sentAt = Date.now()
+    update((current) => ({ ...current, practiceAssignments: [...(current.practiceAssignments ?? []), ...students.map((student) => ({ id: `practice-${sentAt}-${student.id}`, studentId: student.id, skill: reteachSkill, exercises }))] }))
+    setSent(true)
+    notify(`Practice for ${reteachSkill} sent to the whole class.`)
+  }
   const [groupMessage, setGroupMessage] = useState('')
   const groupTargets = students.filter((student) => data.answers.some((answer) => answer.studentId === student.id && answer.confirmed && answer.cause === 'Concept error' && questionsForExam(answer.examId, data.exams)[answer.q]?.skill === reteachSkill))
   const sendGroupMessage = () => { if (!groupMessage.trim() || !groupTargets.length) return; update((current) => ({ ...current, sent: [...current.sent, ...groupTargets.map((student) => `${student.id}: ${groupMessage.trim()}`)] })); notify(`Supportive message sent to ${groupTargets.length} students with a confirmed ${reteachSkill} learning gap.`); setGroupMessage('') }

@@ -87,9 +87,6 @@
 .t-nav-item:focus-visible { border-radius: var(--t-radius-sm); }
 
 .t-header-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.t-role-switch { display: flex; padding: 2px; border: 1px solid var(--t-border); border-radius: var(--t-radius-sm); background: var(--t-subtle); }
-.t-role-switch button { padding: 4px 10px; border: 0; border-radius: 6px; background: none; color: var(--t-text-2); font-size: 12px; font-weight: 500; }
-.t-role-switch button.is-active { background: var(--t-surface); color: var(--t-text); box-shadow: 0 0 0 1px var(--t-border); font-weight: 600; }
 
 .t-icon-btn { position: relative; min-width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--t-radius-sm); background: none; color: var(--t-text-2); transition: background var(--t-fast) var(--t-ease); }
 .t-icon-btn:hover { background: var(--t-subtle); color: var(--t-text); }
@@ -535,8 +532,7 @@
 
 @media (max-width: 760px) {
   .t-main { padding: 16px 16px 40px; }
-  .t-role-switch { display: none; }
-  .t-page-title h1 { font-size: 20px; }
+    .t-page-title h1 { font-size: 20px; }
   .t-page-actions { width: 100%; }
   .t-grid-2, .t-grid-summary, .t-form-grid, .t-grade-body, .t-compare, .t-grade-exam, .t-inset-grid, .t-feedback-actions .t-inset-grid { grid-template-columns: 1fr; }
   .t-scan-frame { min-height: 200px; border-right: 0; border-bottom: 1px solid var(--t-border); }
