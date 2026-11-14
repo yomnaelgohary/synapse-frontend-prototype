@@ -3,6 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import './teacher.css'
 import './student.css'
+import './login.css'
+import './parent.css'
 
 export const metadata: Metadata = {
   title: 'Synapse · Personalized Assessment',

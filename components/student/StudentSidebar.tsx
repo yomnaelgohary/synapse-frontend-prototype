@@ -2,6 +2,7 @@
 
 import {
   ClipboardList,
+  FileUp,
   HelpCircle,
   Home,
   Settings,
@@ -24,6 +25,13 @@ const navigationItems = [
   { id: 'help', label: 'Ask for help', Icon: HelpCircle },
 ]
 
+/** Parent view (FR 70-73): only grades and feedback, progress and page upload. */
+const parentNavigationItems = [
+  { id: 'home', label: 'Grades and feedback', Icon: ClipboardList },
+  { id: 'progress', label: 'Progress', Icon: Sprout },
+  { id: 'upload', label: 'Upload exam pages', Icon: FileUp },
+]
+
 export function StudentSidebar({
   currentScreen,
   onNavigate,
@@ -35,7 +43,7 @@ export function StudentSidebar({
       <div className="view-label">
         {translate(role === 'parent' ? 'Parent view' : 'Student view')}
       </div>
-      {navigationItems.map(({ id, label, Icon }) => {
+      {(role === 'parent' ? parentNavigationItems : navigationItems).map(({ id, label, Icon }) => {
         const isActive = currentScreen === id
 
         return (
@@ -52,10 +60,10 @@ export function StudentSidebar({
         )
       })}
       <div className="sidebar-bottom">
-        <button className="side-item side-item-settings" type="button">
+        {role !== 'parent' && <button className="side-item side-item-settings" type="button">
           <Settings size={18} aria-hidden="true" />
           {translate('Settings')}
-        </button>
+        </button>}
         <div className="demo-note">
           Frontend prototype
           <br />
