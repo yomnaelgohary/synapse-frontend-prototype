@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, LayoutDashboard, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X } from 'lucide-react'
 import { TeacherShell } from '@/components/teacher/TeacherShell'
 import type { TeacherChrome } from '@/components/teacher/TeacherHeader'
 import { PageHeader } from '@/components/teacher/PageHeader'
 import { WorkflowStepper } from '@/components/teacher/WorkflowStepper'
 import { OcrEditor, ScanView, ocrTokens, unsureRemaining } from '@/components/teacher/ocr'
-import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, ErrorSummary, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, stateTone } from '@/components/teacher/ui'
+import * as S from '@/components/teacher/sticker'
+import type { SynaMascotComponent } from '@/components/teacher/sticker'
+import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, ErrorSummary, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, initials, stateTone } from '@/components/teacher/ui'
 
 type Screen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
 type Student = { id: string; name: string }
@@ -130,7 +132,7 @@ function useTeacherData() {
  * the current screen inside the shared TeacherShell (header, nav, footer).
  * ========================================================================== */
 
-export function TeacherWorkspace({ screen, setScreen, chrome }: { screen: string; setScreen: (screen: string) => void; chrome?: TeacherChrome }) {
+export function TeacherWorkspace({ screen, setScreen, chrome, SynaMascot }: { screen: string; setScreen: (screen: string) => void; chrome?: TeacherChrome; SynaMascot?: SynaMascotComponent }) {
   const [data, setData] = useTeacherData()
   const [selectedExam, setSelectedExam] = useState('quiz-3')
   const [notice, setNotice] = useState('')
@@ -140,7 +142,7 @@ export function TeacherWorkspace({ screen, setScreen, chrome }: { screen: string
   const go = (next: Screen) => setScreen(next)
   const newHelp = data.help.filter((item) => item.status === 'New').length
   return <TeacherShell screen={screen} onNavigate={go} helpCount={newHelp} chrome={chrome} toast={notice} onDismissToast={() => setNotice('')}>
-    {screen === 'dashboard' && <Dashboard data={data} setScreen={go} setExam={(id) => { setSelectedExam(id); go('exams') }} />}
+    {screen === 'dashboard' && <Dashboard data={data} setScreen={go} setExam={(id) => { setSelectedExam(id); go('exams') }} Mascot={SynaMascot} />}
     {screen === 'exams' && <ExamList data={data} setScreen={go} setExam={setSelectedExam} />}
     {screen === 'create' && <CreateExam data={data} update={update} setScreen={go} notify={notify} />}
     {screen === 'verify' && <VerifyText exam={exam} exams={data.exams} answers={data.answers} update={update} setScreen={go} notify={notify} setExam={setSelectedExam} />}
@@ -158,69 +160,73 @@ const examsCrumb = (setScreen: (screen: Screen) => void) => ({ label: 'Exams', o
  * Dashboard — overview + "what needs me next" (counts link to the work).
  * ========================================================================== */
 
-function Dashboard({ data, setScreen, setExam }: { data: Data; setScreen: (screen: Screen) => void; setExam: (id: string) => void }) {
+function Dashboard({ data, setScreen, setExam, Mascot }: { data: Data; setScreen: (screen: Screen) => void; setExam: (id: string) => void; Mascot?: SynaMascotComponent }) {
   const uploaded = new Set(data.answers.map((item) => `${item.examId}:${item.studentId}`)).size
   const waitingText = new Set(data.answers.filter((item) => !item.verified && !item.unreadable).map((item) => `${item.examId}:${item.studentId}`)).size
   const waitingGrade = new Set(data.answers.filter((item) => item.verified && !item.confirmed).map((item) => `${item.examId}:${item.studentId}`)).size
   const pendingFlags = data.flags.filter((item) => item.status === 'Pending')
   const newRequests = data.help.filter((item) => item.status === 'New')
+  const released = data.exams.filter((item) => item.released).length
   return <>
-    <PageHeader title="Good morning, Ms. Nadine" description="Your class overview and the next steps that need your attention." actions={<Button icon={<Plus size={16} />} onClick={() => setScreen('create')}>Create exam</Button>}>
-      <div className="t-context-bar">
-        <label className="t-inline-select">Class<select className="t-input t-select" defaultValue="Class 4B"><option>Class 4B</option><option>Class 4A</option></select></label>
-        <span><GraduationCap size={16} aria-hidden="true" /> Grade 4 · 24 students</span>
-        <span><Languages size={16} aria-hidden="true" /> English and German</span>
-      </div>
-    </PageHeader>
+    <S.PageHero
+      Mascot={Mascot}
+      eyebrow="Dashboard" eyebrowIcon={<LayoutDashboard size={18} strokeWidth={2.4} />}
+      title="Good morning, Ms. Nadine"
+      helper="Your class overview and the next steps that need your attention."
+      controls={<>
+        {/* Existing uncontrolled class selector, restyled only. */}
+        <label className="ts-select-label" htmlFor="dashboard-class">Class</label>
+        <span className="ts-select"><select id="dashboard-class" defaultValue="Class 4B"><option>Class 4B</option><option>Class 4A</option></select><ChevronDown size={20} strokeWidth={2.6} aria-hidden="true" /></span>
+        <S.InfoPill icon={<GraduationCap size={18} strokeWidth={2.4} />}>Grade 4 · 24 students</S.InfoPill>
+        <S.InfoPill icon={<Languages size={18} strokeWidth={2.4} />}>English and German</S.InfoPill>
+      </>}
+      action={<S.StickerButton icon={<Plus size={20} strokeWidth={2.6} />} onClick={() => setScreen('create')}>Create exam</S.StickerButton>} />
 
-    <div className="t-grid t-grid-4">
-      <StatCard label="Papers uploaded" value={uploaded} detail="Across active exams" icon={<Upload size={18} />} onClick={() => setScreen('exams')} />
-      <StatCard label="Text verification" value={waitingText} detail="Papers need a text check" icon={<ScanLine size={18} />} onClick={() => setScreen('verify')} />
-      <StatCard label="Grade confirmation" value={waitingGrade} detail="AI suggestions ready" icon={<ClipboardCheck size={18} />} onClick={() => setScreen('grades')} />
-      <StatCard label="Released papers" value={data.exams.filter((item) => item.released).length} detail="Students notified" icon={<Check size={18} />} onClick={() => setScreen('exams')} />
-    </div>
+    <section className="ts-workflow" aria-labelledby="workflow-title">
+      <h2 id="workflow-title">Assessment workflow</h2>
+      <p>Every exam follows the same four steps. Only teacher-confirmed results are shared with students.</p>
+      {/* The four stages read as a pipeline; connectors are drawn in CSS between items. */}
+      <ol className="ts-stats">
+        <li><S.StatCard step={1} tone="sky" label="Papers uploaded" value={uploaded} detail="Across active exams" icon={<Upload size={24} strokeWidth={2.4} />} onClick={() => setScreen('exams')} /></li>
+        <li><S.StatCard step={2} tone="sun" label="Text verification" value={waitingText} detail="Papers need a text check" icon={<ScanLine size={24} strokeWidth={2.4} />} attention={waitingText > 0} onClick={() => setScreen('verify')} /></li>
+        <li><S.StatCard step={3} tone="lavender" label="Grade confirmation" value={waitingGrade} detail="AI suggestions ready" icon={<ClipboardCheck size={24} strokeWidth={2.4} />} attention={waitingGrade > 0} onClick={() => setScreen('grades')} /></li>
+        <li><S.StatCard step={4} tone="mint" label="Released papers" value={released} detail="Students notified" icon={<Check size={24} strokeWidth={2.6} />} onClick={() => setScreen('exams')} /></li>
+      </ol>
+    </section>
 
-    <div className="t-grid t-grid-main">
-      <Card padded={false}>
-        <CardHeader title="Your exams" description="Progress of each assessment through the workflow." action={<LinkButton onClick={() => setScreen('exams')}>View all <ChevronRight size={14} /></LinkButton>} />
-        <ul className="t-rows">{data.exams.map((item) => {
+    <div className="ts-dash-grid">
+      <S.SectionCard title="Your exams" helper="Progress of each assessment through the workflow." aside={<S.TextLink icon="chevron" onClick={() => setScreen('exams')}>View all</S.TextLink>}>
+        <ul className="ts-rows">{data.exams.map((item) => {
           const studentAnswers = data.answers.filter((answer) => answer.examId === item.id)
           const examUploaded = new Set(studentAnswers.map((answer) => answer.studentId)).size
           const textCheck = new Set(studentAnswers.filter((answer) => !answer.verified && !answer.unreadable).map((answer) => answer.studentId)).size
           const gradeReview = new Set(studentAnswers.filter((answer) => answer.verified && !answer.confirmed).map((answer) => answer.studentId)).size
-          return <li className="t-exam-row" key={item.id}>
-            <span className="t-row-icon" aria-hidden="true"><FileText size={18} /></span>
-            <div className="t-exam-info">
+          return <li className="ts-exam-row" key={item.id}>
+            <span className="ts-doc-tile" aria-hidden="true"><FileText size={24} strokeWidth={2.4} /></span>
+            <div className="ts-exam-copy">
               <strong>{item.title}</strong>
-              <small>{item.className} · {item.subject} · {formatDate(item.date)}</small>
-              <div className="t-counts"><span>{examUploaded} uploaded</span><span>{textCheck} text check</span><span>{gradeReview} grade review</span></div>
+              <span>{item.className} · {item.subject} · {formatDate(item.date)}</span>
+              <div className="ts-metas"><S.MetaPill value={examUploaded} label="uploaded" /><S.MetaPill value={textCheck} label="text check" /><S.MetaPill value={gradeReview} label="grade review" /></div>
             </div>
-            <Badge tone={item.released ? 'success' : 'warning'} dot>{item.status}</Badge>
-            <Button variant="secondary" size="sm" onClick={() => setExam(item.id)}>Open exam</Button>
+            <div className="ts-exam-side">
+              <S.StatusChip status={item.status} />
+              <S.StickerButton variant="secondary" size="sm" trailingIcon={<ArrowRight size={18} strokeWidth={2.6} />} ariaLabel={`Open exam ${item.title}`} onClick={() => setExam(item.id)}>Open exam</S.StickerButton>
+            </div>
           </li>
         })}</ul>
-      </Card>
+      </S.SectionCard>
 
-      <div className="t-stack">
-        <Card padded={false}>
-          <CardHeader title="Open red flags" action={<Badge tone={pendingFlags.length ? 'warning' : 'neutral'}>{pendingFlags.length} pending</Badge>} />
-          {pendingFlags.length ? <div className="t-list">{pendingFlags.map((flag) => <ListItem key={flag.id} onClick={() => setScreen('gaps')} leading={<span className="t-row-icon t-row-icon-warning" aria-hidden="true"><Flag size={16} /></span>} title={`${person(flag.studentId).name} · ${flag.skill}`} subtitle={flag.reason} trailing={<ChevronRight size={16} />} />)}</div>
-            : <EmptyState title="No open red flags." />}
-          <footer className="t-card-footer"><LinkButton onClick={() => setScreen('gaps')}>Review learning gaps <ArrowRight size={14} /></LinkButton></footer>
-        </Card>
-        <Card padded={false}>
-          <CardHeader title="New help requests" action={<Badge tone={newRequests.length ? 'warning' : 'neutral'}>{newRequests.length} new</Badge>} />
-          {newRequests.length ? <div className="t-list">{newRequests.slice(0, 2).map((request) => <ListItem key={request.id} onClick={() => setScreen('help')} leading={<Avatar name={person(request.studentId).name} />} title={person(request.studentId).name} subtitle={request.topic} trailing={<ChevronRight size={16} />} />)}</div>
-            : <EmptyState title="No new help requests." />}
-          <footer className="t-card-footer"><LinkButton onClick={() => setScreen('help')}>Open inbox <ArrowRight size={14} /></LinkButton></footer>
-        </Card>
+      <div className="ts-dash-side">
+        <S.SectionCard title="Open red flags" aside={<S.CountChip tone="amber">{pendingFlags.length} pending</S.CountChip>} footer={<S.TextLink onClick={() => setScreen('gaps')}>Review learning gaps</S.TextLink>}>
+          {pendingFlags.length ? pendingFlags.map((flag) => <S.LinkRow key={flag.id} onClick={() => setScreen('gaps')} leading={<span className="ts-flag-tile" aria-hidden="true"><Flag size={22} strokeWidth={2.4} /></span>} title={`${person(flag.studentId).name} · ${flag.skill}`} description={flag.reason} />)
+            : <p className="ts-empty">No open red flags.</p>}
+        </S.SectionCard>
+        <S.SectionCard title="New help requests" aside={<S.CountChip tone="sky">{newRequests.length} new</S.CountChip>} footer={<S.TextLink onClick={() => setScreen('help')}>Open inbox</S.TextLink>}>
+          {newRequests.length ? newRequests.slice(0, 2).map((request, index) => <S.LinkRow key={request.id} onClick={() => setScreen('help')} leading={<span className={`ts-initials ${index % 2 ? 'ts-tile-lavender' : 'ts-tile-sky'}`} aria-hidden="true">{initials(person(request.studentId).name)}</span>} title={person(request.studentId).name} description={request.topic} />)
+            : <p className="ts-empty">No new help requests.</p>}
+        </S.SectionCard>
       </div>
     </div>
-
-    <Card className="t-workflow-card">
-      <CardHeader title="Assessment workflow" description="Every exam follows the same four steps. Only teacher-confirmed results are shared with students." />
-      <WorkflowStepper />
-    </Card>
   </>
 }
 
