@@ -1,0 +1,93 @@
+/* ==========================================================================
+ * Student view edits (sticker theme): notification menu, upload flow and
+ * My results additions. Scoped to existing student class names.
+ * ========================================================================== */
+
+/* ---- (1) notification menu: sticker look, each item opens its section ---- */
+.student-notification-menu { width: min(380px, calc(100vw - 24px)); top: 64px; padding: 10px; border: 3px solid #1E2250; border-radius: 22px; background: #fff; box-shadow: 0 6px 0 #1E2250; font-family: var(--font-nunito), Nunito, sans-serif; animation: student-pop .2s cubic-bezier(.3, 1.4, .5, 1) both; }
+.student-notification-menu .notification-menu-head { align-items: center; padding: 6px 8px 12px; border-bottom: 2px solid #DDE2F7; }
+.student-notification-menu .notification-menu-head strong { font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 21px; font-weight: 700; color: #1E2250; }
+.student-notification-menu .notification-menu-head small { padding: 2px 12px; border: 2px solid #1E2250; border-radius: 999px; background: #FF8A6B; color: #1E2250; font-size: 16px; font-weight: 800; }
+.student-notification-menu .notification-item { flex-direction: row; align-items: center; gap: 12px; min-height: 68px; margin-top: 6px; padding: 10px; border: 2px solid transparent; border-top: 0; border-radius: 16px; background: #fff; }
+.student-notification-menu .notification-item:hover { border-color: #DDE2F7; background: #F4F6FF; }
+.student-notification-menu .notification-item:focus-visible { outline: 4px solid #1E2250; outline-offset: 0; }
+.notification-item-icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 3px solid #1E2250; border-radius: 14px; color: #1E2250; }
+.notification-item-icon.mint { background: #BFF0DD; }
+.notification-item-icon.sky { background: #CBE7FF; }
+.notification-item-icon.sun { background: #FFE9A8; }
+.notification-item-icon.lavender { background: #E6E3FB; }
+.notification-item-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.student-notification-menu .notification-item-copy strong { font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 17px; font-weight: 600; color: #1E2250; }
+.student-notification-menu .notification-item-copy span { font-size: 16px; font-weight: 700; color: #3A3F6B; }
+.notification-item-chevron { flex: none; color: #1E2250; transition: transform .15s; }
+.notification-item:hover .notification-item-chevron { transform: translateX(3px); }
+/* the section a notification opened gets a short highlight */
+.notification-target { animation: student-target 1.6s ease both; }
+@keyframes student-target { 0%, 60% { box-shadow: 0 0 0 5px #FFC933; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes student-pop { from { transform: scale(.97); } to { transform: scale(1); } }
+
+/* ---- (2) upload: every step card has the same width as the subject card ---- */
+.student-upload-flow .upload-choice-layout .upload-choice-card,
+.student-upload-flow .upload-exam-section,
+.student-upload-flow .sure-check-card,
+.student-upload-flow:has(.upload-choice-layout.exam-selection-open) .upload-choice-layout .upload-exam-section { width: 100%; max-width: none; margin-left: 0; margin-right: 0; justify-self: stretch; }
+.student-upload-flow:has(.sure-check-card), .student-upload-flow:has(.upload-step-card) { max-width: 1040px; }
+
+/* quality problems are errors: red and centered, no "add anyway" */
+.quality-modal { text-align: center; }
+.quality-modal .quality-error-title { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 18px 0 6px; color: #B42318; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 24px; font-weight: 700; }
+.quality-modal .quality-error-title svg { width: 26px; height: 26px; flex: none; }
+.student-upload-flow .quality-modal .quality-error-help, .quality-modal > p.quality-error-help { max-width: none; margin: 0 auto 18px; color: #B42318; font-weight: 800; text-align: center; }
+.quality-modal .quality-modal-actions { justify-content: center; }
+
+/* (3) reorder hint sits left-aligned under "My pages" */
+.student-upload-flow .upload-pages-heading { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; }
+.student-upload-flow .upload-pages-heading p { justify-content: flex-start; text-align: left; font-size: 16px; color: #3A3F6B; font-weight: 700; }
+
+/* Grade 1–2 face icons on Sure-Check */
+.confidence-face { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 6px; border: 3px solid #1E2250; border-radius: 50%; color: #1E2250; }
+.confidence-face svg { width: 34px; height: 34px; stroke-width: 2.2; }
+.confidence-face.face-0 { background: #BFF0DD; }
+.confidence-face.face-1 { background: #FFF1C2; }
+.confidence-face.face-2 { background: #FFE0D6; }
+
+/* Review: organised rows, "Change" always on the right */
+.student-upload-flow .upload-review-card { height: auto; min-height: 0; overflow: visible; }
+.student-upload-flow .upload-review-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; margin-top: 20px; }
+.student-upload-flow .upload-review-group { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 2px solid #DDE2F7; border-radius: 24px; background: #F8F9FF; }
+.upload-review-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.upload-review-group-head h3 { margin: 0; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 20px; font-weight: 700; color: #1E2250; }
+.upload-review-count { padding: 2px 12px; border: 2px solid #1E2250; border-radius: 999px; background: #fff; font-size: 16px; font-weight: 800; color: #1E2250; }
+.upload-review-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.student-upload-flow .review-upload-row, .student-upload-flow .review-upload-answer { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 2px solid #DDE2F7; border-radius: 18px; background: #fff; }
+.student-upload-flow .upload-review-thumbnail, .review-q-badge { width: 48px; height: 48px; display: grid; place-items: center; border: 3px solid #1E2250; border-radius: 14px; background: #E6E3FB; color: #1E2250; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 20px; font-weight: 700; }
+.review-row-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.review-row-copy strong { font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 18px; font-weight: 600; color: #1E2250; }
+.review-row-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; color: #3A3F6B; }
+.review-row-copy .review-q { color: #4F46E5; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
+.review-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-change { min-height: 44px; padding: 0 16px; border: 3px solid #1E2250; border-radius: 14px; background: #fff; color: #1E2250; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 17px; font-weight: 600; box-shadow: 0 3px 0 #1E2250; cursor: pointer; }
+.review-change:hover { transform: translateY(-2px); }
+@media (max-width: 860px) {
+  .student-upload-flow .upload-review-columns { grid-template-columns: minmax(0, 1fr); }
+  .student-upload-flow .review-upload-row, .student-upload-flow .review-upload-answer { grid-template-columns: 44px minmax(0, 1fr); }
+  .review-change { grid-column: 1 / -1; width: 100%; }
+}
+
+/* ---- My results additions ---- */
+.results-sticker-answer-feedback { display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; padding: 14px 16px; border: 2px solid #4F46E5; border-radius: 20px; background: #EEF0FF; color: #1E2250; }
+.results-sticker-answer-feedback-icon { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 3px solid #1E2250; border-radius: 12px; background: #CBE7FF; }
+.results-sticker-answer-feedback-icon svg { width: 20px; height: 20px; }
+.results-sticker-answer-feedback strong { font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 18px; }
+.results-sticker-answer-feedback p { margin: 2px 0 0; font-size: 17px; font-weight: 700; line-height: 1.45; }
+.results-sticker-support-heading p { margin: 4px 0 0; font-size: 17px; font-weight: 700; color: #3A3F6B; }
+.results-sticker-flag-notes { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.results-sticker-flag-notes h3 { margin: 0; font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 21px; color: #1E2250; }
+.results-sticker-flag-note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 2px solid #FF8A6B; border-radius: 20px; background: #FFF4EF; color: #1E2250; }
+.results-sticker-flag-icon { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 3px solid #1E2250; border-radius: 12px; background: #FFE0D6; }
+.results-sticker-flag-icon svg { width: 20px; height: 20px; }
+.results-sticker-flag-note strong { font-family: var(--font-fredoka), Fredoka, sans-serif; font-size: 18px; }
+.results-sticker-flag-note p { margin: 2px 0 0; font-size: 17px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .student-notification-menu, .notification-target { animation: none; } }
+/* sections opened from a notification clear the sticky header */
+#results-grade, #results-feedback, #results-practice, #student-office-hour { scroll-margin-top: 104px; }

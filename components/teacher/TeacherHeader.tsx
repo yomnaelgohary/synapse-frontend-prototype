@@ -10,7 +10,8 @@
  * "Exams" while verifying text).
  */
 
-import { Bell, FileText, Inbox, LayoutDashboard, LogOut, Sparkles, Target } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Bell, ChevronRight, ClipboardCheck, FileText, Flag, Inbox, LayoutDashboard, LogOut, ScanLine, Sparkles, Target } from 'lucide-react'
 import { cx } from './ui'
 
 export type TeacherScreen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
@@ -21,6 +22,47 @@ export type TeacherChrome = {
   onLanguageChange: (language: 'EN' | 'DE') => void
   /** Back to the login screen without reloading, so this session's demo data is kept. */
   onSignOut?: () => void
+}
+
+/** One teacher notification (built from live data in the workspace). */
+export type TeacherNotification = { id: string; kind: 'help' | 'flag' | 'text' | 'grades'; title: string; message: string; onOpen: () => void }
+
+const notificationIcon = { help: Inbox, flag: Flag, text: ScanLine, grades: ClipboardCheck }
+const notificationTile = { help: 'sky', flag: 'coral', text: 'sun', grades: 'lavender' } as const
+
+/**
+ * Bell + notification menu: the bell opens the list; each item goes straight to
+ * its section. Esc / outside click close it and focus returns to the bell.
+ */
+function NotificationMenu({ items }: { items: TeacherNotification[] }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const bellRef = useRef<HTMLButtonElement>(null)
+  const menuId = useId()
+  useEffect(() => {
+    if (!open) return
+    wrapRef.current?.querySelector<HTMLElement>('.ts-notif-item')?.focus()
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); bellRef.current?.focus() } }
+    const onDown = (event: MouseEvent) => { if (!wrapRef.current?.contains(event.target as Node)) setOpen(false) }
+    window.addEventListener('keydown', onKey); window.addEventListener('mousedown', onDown)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown) }
+  }, [open])
+  return <div className="ts-notif" ref={wrapRef}>
+    <button ref={bellRef} type="button" className="ts-round-btn ts-bell" aria-label={`Notifications, ${items.length} new`} title="Notifications" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen((value) => !value)}>
+      <Bell size={22} strokeWidth={2.4} aria-hidden="true" />{items.length > 0 && <b aria-hidden="true">{items.length}</b>}
+    </button>
+    {open && <div className="ts-notif-menu" id={menuId} role="region" aria-label="Notifications">
+      <div className="ts-notif-head"><strong>Notifications</strong><span className="ts-count ts-count-sky">{items.length} new</span></div>
+      {items.length ? <ul>{items.map((item) => {
+        const Icon = notificationIcon[item.kind]
+        return <li key={item.id}><button type="button" className="ts-notif-item" onClick={() => { setOpen(false); item.onOpen() }}>
+          <span className={`ts-notif-tile ts-tile-${notificationTile[item.kind]}`} aria-hidden="true"><Icon size={20} strokeWidth={2.4} /></span>
+          <span className="ts-notif-copy"><strong>{item.title}</strong><span>{item.message}</span></span>
+          <ChevronRight size={20} strokeWidth={2.4} aria-hidden="true" />
+        </button></li>
+      })}</ul> : <p className="ts-notif-empty">You are all caught up.</p>}
+    </div>}
+  </div>
 }
 
 /** Primary sections, the screens that belong to each, and their fixed tile colour. */
@@ -41,7 +83,7 @@ function SectionLink({ section, active, helpCount, onNavigate, variant }: { sect
   </button>
 }
 
-export function TeacherHeader({ screen, onNavigate, helpCount, chrome }: { screen: string; onNavigate: (screen: TeacherScreen) => void; helpCount: number; chrome?: TeacherChrome }) {
+export function TeacherHeader({ screen, onNavigate, helpCount, chrome, notifications = [] }: { screen: string; onNavigate: (screen: TeacherScreen) => void; helpCount: number; chrome?: TeacherChrome; notifications?: TeacherNotification[] }) {
   const isActive = (section: (typeof teacherSections)[number]) => section.screens.includes(screen as TeacherScreen)
   return <>
     <header className="ts-header">
@@ -60,9 +102,7 @@ export function TeacherHeader({ screen, onNavigate, helpCount, chrome }: { scree
         {chrome && <div className="ts-lang" role="group" aria-label="Interface language">
           {(['EN', 'DE'] as const).map((code) => <button type="button" key={code} aria-pressed={chrome.language === code} onClick={() => chrome.language !== code && chrome.onLanguageChange(code)}>{code}</button>)}
         </div>}
-        <button type="button" className="ts-round-btn ts-bell" onClick={() => onNavigate('help')} aria-label={`Notifications, ${helpCount} new`}>
-          <Bell size={22} strokeWidth={2.4} aria-hidden="true" />{helpCount > 0 && <b aria-hidden="true">{helpCount}</b>}
-        </button>
+        <NotificationMenu items={notifications} />
         <span className="ts-profile"><span className="ts-avatar" aria-hidden="true">N</span><span className="ts-profile-name">Ms. Nadine</span></span>
         {chrome?.onSignOut && <button type="button" className="ts-round-btn" onClick={chrome.onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={20} strokeWidth={2.4} aria-hidden="true" /></button>}
       </div>

@@ -70,15 +70,15 @@ export function ScanView({ tokens, label, zoom, onZoom }: { tokens: OcrToken[]; 
     <figcaption className="t-scan-head">
       <span className="t-overline">{label}</span>
       <div className="t-zoom" role="group" aria-label="Scan zoom">
-        <button type="button" className="t-icon-btn" aria-label="Zoom out" disabled={zoom <= ZOOM_MIN} onClick={() => onZoom(clamp(zoom - ZOOM_STEP))}><ZoomOut size={16} /></button>
+        <button type="button" className="t-icon-btn" aria-label="Zoom out" title="Zoom out" disabled={zoom <= ZOOM_MIN} onClick={() => onZoom(clamp(zoom - ZOOM_STEP))}><ZoomOut size={16} /></button>
         <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" className="t-icon-btn" aria-label="Zoom in" disabled={zoom >= ZOOM_MAX} onClick={() => onZoom(clamp(zoom + ZOOM_STEP))}><ZoomIn size={16} /></button>
-        <button type="button" className="t-icon-btn" aria-label="Reset zoom to 100%" disabled={zoom === 1} onClick={() => onZoom(1)}><Maximize2 size={14} /></button>
+        <button type="button" className="t-icon-btn" aria-label="Zoom in" title="Zoom in" disabled={zoom >= ZOOM_MAX} onClick={() => onZoom(clamp(zoom + ZOOM_STEP))}><ZoomIn size={16} /></button>
+        <button type="button" className="t-icon-btn" aria-label="Reset zoom to 100%" title="Reset zoom to 100%" disabled={zoom === 1} onClick={() => onZoom(1)}><Maximize2 size={14} /></button>
       </div>
     </figcaption>
     {/* tabIndex lets keyboard users scroll a zoomed scan with the arrow keys */}
     <div className="t-scan-viewport" tabIndex={0} aria-label="Scanned answer. Scroll to pan when zoomed in.">
-      <div className={cx('t-scan-paper', handwriting.className)} style={{ width: `${zoom * 100}%`, fontSize: `${28 * zoom}px` }}>
+      <div data-no-translate className={cx('t-scan-paper', handwriting.className)} style={{ width: `${zoom * 100}%`, fontSize: `${28 * zoom}px` }}>
         {tokens.map((token, index) => <span key={index} className={cx('t-ink', token.unsure && 'is-unsure')} title={token.unsure ? `OCR ${Math.round(token.confidence * 100)}% sure` : undefined}>{token.text}</span>)}
       </div>
     </div>
@@ -104,7 +104,7 @@ export function OcrEditor({ id, value, tokens, disabled, reviewed, onChange, des
   }, [value])
   const parts = annotate(value, tokens)
   return <div className={cx('t-ocr-editor', disabled && 'is-disabled', reviewed && 'is-reviewed')}>
-    <div ref={backdropRef} className="t-ocr-backdrop" aria-hidden="true">
+    <div ref={backdropRef} className="t-ocr-backdrop" aria-hidden="true" data-no-translate>
       {parts.map((item, index) => item.kind === 'space' ? item.part : <mark key={index} className={`is-${item.kind}`}>{item.part}</mark>)}
       {'\n'}
     </div>
