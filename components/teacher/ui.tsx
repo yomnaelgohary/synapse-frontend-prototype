@@ -114,31 +114,61 @@ export function DescriptionList({ items }: { items: Array<{ term: string; detail
 
 /* ------------------------------------------------------------------- inputs */
 
-function FieldShell({ label, hint, required, children, htmlFor }: { label: string; hint?: React.ReactNode; required?: boolean; children: React.ReactNode; htmlFor: string }) {
-  return <div className="t-field">
+/**
+ * Shared props for every input. `error` turns the field red, shows the
+ * message under it and links it to the control for screen readers;
+ * `id` lets a form move focus to the field from an error summary.
+ */
+type FieldProps = { label: string; hint?: React.ReactNode; error?: string; required?: boolean; id?: string; onBlur?: () => void }
+
+/** aria-describedby value for the hint and/or error under a field. */
+const describedBy = (id: string, hint?: React.ReactNode, error?: string) => [error && `${id}-error`, hint && `${id}-hint`].filter(Boolean).join(' ') || undefined
+
+function FieldShell({ label, hint, error, required, children, htmlFor }: { label: string; hint?: React.ReactNode; error?: string; required?: boolean; children: React.ReactNode; htmlFor: string }) {
+  return <div className={cx('t-field', error && 'has-error')}>
     <label htmlFor={htmlFor}>{label}{required && <span className="t-required" aria-hidden="true"> *</span>}</label>
     {children}
-    {hint && <small className="t-hint">{hint}</small>}
+    {error && <small className="t-error" id={`${htmlFor}-error`}><CircleAlert size={13} aria-hidden="true" />{error}</small>}
+    {hint && <small className="t-hint" id={`${htmlFor}-hint`}>{hint}</small>}
   </div>
 }
 
-export function TextField({ label, value, onChange, required = false, type = 'text', hint, placeholder, min, max, disabled }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string; hint?: React.ReactNode; placeholder?: string; min?: number; max?: number; disabled?: boolean }) {
-  const id = useId()
-  return <FieldShell label={label} hint={hint} required={required} htmlFor={id}><input id={id} className="t-input" type={type} value={value} required={required} placeholder={placeholder} min={min} max={max} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></FieldShell>
+export function TextField({ label, value, onChange, required = false, type = 'text', hint, error, placeholder, min, max, step, disabled, id: fixedId, onBlur }: FieldProps & { value: string; onChange: (value: string) => void; type?: string; placeholder?: string; min?: number; max?: number; step?: number; disabled?: boolean }) {
+  const autoId = useId(); const id = fixedId ?? autoId
+  return <FieldShell label={label} hint={hint} error={error} required={required} htmlFor={id}>
+    <input id={id} className="t-input" type={type} value={value} required={required} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, hint, error)} placeholder={placeholder} min={min} max={max} step={step} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} />
+  </FieldShell>
 }
 
-export function TextArea({ label, value, onChange, rows = 3, required = false, hint, placeholder, disabled, ariaLabel }: { label?: string; value: string; onChange: (value: string) => void; rows?: number; required?: boolean; hint?: React.ReactNode; placeholder?: string; disabled?: boolean; ariaLabel?: string }) {
-  const id = useId()
-  const area = <textarea id={id} className="t-input" rows={rows} required={required} value={value} placeholder={placeholder} disabled={disabled} aria-label={label ? undefined : ariaLabel} onChange={(event) => onChange(event.target.value)} />
-  return label ? <FieldShell label={label} hint={hint} required={required} htmlFor={id}>{area}</FieldShell> : <div className="t-field">{area}</div>
+export function TextArea({ label, value, onChange, rows = 3, required = false, hint, error, placeholder, disabled, ariaLabel, id: fixedId, onBlur }: Omit<FieldProps, 'label'> & { label?: string; value: string; onChange: (value: string) => void; rows?: number; placeholder?: string; disabled?: boolean; ariaLabel?: string }) {
+  const autoId = useId(); const id = fixedId ?? autoId
+  const area = <textarea id={id} className="t-input" rows={rows} required={required} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={label ? describedBy(id, hint, error) : undefined} value={value} placeholder={placeholder} disabled={disabled} aria-label={label ? undefined : ariaLabel} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} />
+  return label ? <FieldShell label={label} hint={hint} error={error} required={required} htmlFor={id}>{area}</FieldShell> : <div className="t-field">{area}</div>
 }
 
-export function SelectField({ label, value, options, onChange, hint, hideLabel = false }: { label: string; value: string; options: Array<string | { value: string; label: string }>; onChange: (value: string) => void; hint?: React.ReactNode; hideLabel?: boolean }) {
-  const id = useId()
-  const select = <select id={id} className="t-input t-select" value={value} aria-label={hideLabel ? label : undefined} onChange={(event) => onChange(event.target.value)}>
+export function SelectField({ label, value, options, onChange, hint, error, required = false, hideLabel = false, id: fixedId, onBlur }: FieldProps & { value: string; options: Array<string | { value: string; label: string }>; onChange: (value: string) => void; hideLabel?: boolean }) {
+  const autoId = useId(); const id = fixedId ?? autoId
+  const select = <select id={id} className="t-input t-select" value={value} aria-label={hideLabel ? label : undefined} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={hideLabel ? undefined : describedBy(id, hint, error)} onBlur={onBlur} onChange={(event) => onChange(event.target.value)}>
     {options.map((option) => typeof option === 'string' ? <option key={option}>{option}</option> : <option key={option.value} value={option.value}>{option.label}</option>)}
   </select>
-  return hideLabel ? select : <FieldShell label={label} hint={hint} htmlFor={id}>{select}</FieldShell>
+  return hideLabel ? select : <FieldShell label={label} hint={hint} error={error} required={required} htmlFor={id}>{select}</FieldShell>
+}
+
+/**
+ * Error summary shown at the top of a form after a failed save. Each item is
+ * a button that moves focus to the field, so nothing has to be hunted for
+ * (Nielsen #9 — help users recognise, diagnose, and recover from errors).
+ */
+export function ErrorSummary({ title, errors, summaryRef }: { title: string; errors: Array<{ fieldId: string; label: string; message: string }>; summaryRef?: React.Ref<HTMLDivElement> }) {
+  const focusField = (fieldId: string) => {
+    const field = document.getElementById(fieldId)
+    field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    field?.focus({ preventScroll: true })
+  }
+  return <div className="t-error-summary" role="alert" tabIndex={-1} ref={summaryRef}>
+    <strong><CircleAlert size={16} aria-hidden="true" />{title}</strong>
+    <ul>{errors.map((item) => <li key={`${item.fieldId}-${item.message}`}><button type="button" onClick={() => focusField(item.fieldId)}><span>{item.label}:</span> {item.message}</button></li>)}</ul>
+  </div>
 }
 
 /** Accessible switch built on a native checkbox. */

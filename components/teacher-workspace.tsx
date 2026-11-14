@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, Lock, MessageSquare, Pencil, Plus, ScanLine, Send, Sparkles, StickyNote, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ArrowRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, CircleHelp, ClipboardCheck, Download, Eye, FileText, Flag, GraduationCap, Inbox, Languages, Lock, Meh, MessageSquare, Pencil, Plus, ScanLine, Send, Smile, Sparkles, StickyNote, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { TeacherShell } from '@/components/teacher/TeacherShell'
 import type { TeacherChrome } from '@/components/teacher/TeacherHeader'
 import { PageHeader } from '@/components/teacher/PageHeader'
 import { WorkflowStepper } from '@/components/teacher/WorkflowStepper'
-import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, stateTone } from '@/components/teacher/ui'
+import { Alert, Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, ErrorSummary, LinkButton, ListItem, Modal, ProgressBar, Segmented, SelectField, StatCard, Tabs, TextArea, TextField, Toggle, cx, formatDate, stateTone } from '@/components/teacher/ui'
 
 type Screen = 'dashboard' | 'exams' | 'create' | 'verify' | 'grades' | 'gaps' | 'profile' | 'help'
 type Student = { id: string; name: string }
@@ -70,6 +70,27 @@ const initialData: Data = {
 }
 const stateHelp = 'Secure: correct and sure. Wobbly: correct but unsure, or guessed. Known gap: incorrect and unsure. Surprise mistake: incorrect despite feeling sure.'
 const questionsForExam = (examId: string, exams: Exam[] = initialExams) => exams.find((item) => item.id === examId)?.questions ?? (examId === 'science-2' ? [{ prompt: 'What does a habitat provide?', skill: 'Animal Habitats', max: 4, expected: 'Food, water, and shelter.' }, ...questions.slice(1)] : questions)
+/**
+ * Maps the teacher's model-answer criteria to questions (0-based index).
+ * - Labelled text ("Q1: …", one per line or several on one line) is matched
+ *   by its label, so the order of lines does not matter.
+ * - Text without any "Qn:" labels is matched line by line, in order.
+ * Grading and regrading both use this, so every answer is compared only with
+ * the criterion the teacher wrote for that exact question.
+ */
+const parseModelCriteria = (text: string): string[] => {
+  const labels = [...text.matchAll(/\bQ(\d+)\s*:/gi)]
+  if (!labels.length) return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const criteria: string[] = []
+  labels.forEach((match, index) => {
+    const start = (match.index ?? 0) + match[0].length
+    const end = index + 1 < labels.length ? labels[index + 1].index ?? text.length : text.length
+    const value = text.slice(start, end).trim()
+    const question = Number(match[1]) - 1
+    if (value && question >= 0 && criteria[question] === undefined) criteria[question] = value
+  })
+  return criteria
+}
 const person = (id: string) => students.find((student) => student.id === id) ?? students[0]
 
 function useTeacherData() {
@@ -213,58 +234,164 @@ function ExamList({ data, setScreen, setExam }: { data: Data; setScreen: (screen
  * Create exam — four numbered sections, one sticky save bar.
  * ========================================================================== */
 
+/** Skill tags offered per subject (Science tags match the student help topics). */
+const skillsBySubject: Record<string, string[]> = {
+  Math: ['Multiplication', 'Comparing Fractions', 'Adding Fractions', 'Word Problems', 'Equivalent Fractions'],
+  Science: ['Living Things', 'Matter and Materials', 'Animal Habitats'],
+}
+const allowedModelFiles = ['.pdf', '.doc', '.docx']
+const MAX_MARKS = 100
+type QuestionRow = { question: string; marks: string; skill: string }
+
 function CreateExam({ data, update, setScreen, notify }: { data: Data; update: (fn: (current: Data) => Data) => void; setScreen: (screen: Screen) => void; notify: (message: string) => void }) {
-  const [title, setTitle] = useState(''); const [subject, setSubject] = useState('Math'); const [className, setClassName] = useState('Class 4B'); const [language, setLanguage] = useState<'English' | 'German'>('English'); const [date, setDate] = useState('2026-11-20'); const [modelFile, setModelFile] = useState(''); const [modelText, setModelText] = useState(''); const [sureCheck, setSureCheck] = useState(true); const [faces, setFaces] = useState(true); const [rows, setRows] = useState([{ question: 'Compare 3/4 and 2/3', marks: '3', skill: 'Comparing Fractions' }, { question: 'Find an equivalent fraction for 1/2', marks: '3', skill: 'Equivalent Fractions' }, { question: 'Solve 5/8 + 1/8', marks: '4', skill: 'Adding Fractions' }]); const [error, setError] = useState('')
-  const submit = (event: React.FormEvent) => { event.preventDefault(); if (!title.trim() || !modelFile || !modelText.trim() || !date || rows.some((row) => !row.question.trim() || !row.skill.trim() || !row.marks || !Number.isInteger(Number(row.marks)) || Number(row.marks) < 1)) { setError('Add an exam title, date, model-answer file and criteria, plus a question, whole-number marks, and skill for every question.'); return } const id = `exam-${Date.now()}`; update((current) => ({ ...current, exams: [{ id, title: title.trim(), subject, className, language, date, modelFile, modelText, sureCheck, faces, status: 'Uploaded', released: false, questions: rows.map((row) => ({ prompt: row.question, skill: row.skill, max: Number(row.marks), expected: modelText.split(/\r?\n/).map((line) => line.replace(/^Q\d+\s*:\s*/i, '').trim()).filter(Boolean)[rows.indexOf(row)] ?? row.question })) }, ...current.exams] })); notify('Exam saved. It is ready for student uploads.'); setScreen('exams') }
+  const [title, setTitle] = useState(''); const [subject, setSubject] = useState('Math'); const [className, setClassName] = useState('Class 4B'); const [language, setLanguage] = useState<'English' | 'German'>('English'); const [date, setDate] = useState('2026-11-20'); const [modelFile, setModelFile] = useState(''); const [modelText, setModelText] = useState(''); const [sureCheck, setSureCheck] = useState(true)
+  // Face icons are designed for Grades 1–2; both classes here are Grade 4, so they start off.
+  const [faces, setFaces] = useState(false)
+  const [rows, setRows] = useState<QuestionRow[]>([{ question: 'Compare 3/4 and 2/3', marks: '3', skill: 'Comparing Fractions' }, { question: 'Find an equivalent fraction for 1/2', marks: '3', skill: 'Equivalent Fractions' }, { question: 'Solve 5/8 + 1/8', marks: '4', skill: 'Adding Fractions' }])
+  const [fileError, setFileError] = useState('')
+  const [touched, setTouched] = useState<Set<string>>(new Set())
+  const [submitted, setSubmitted] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const summaryRef = useRef<HTMLDivElement>(null)
+
+  const touch = (key: string) => setTouched((current) => current.has(key) ? current : new Set(current).add(key))
+  const updateRow = (index: number, patch: Partial<QuestionRow>) => setRows((items) => items.map((item, i) => i === index ? { ...item, ...patch } : item))
+  const skillOptions = skillsBySubject[subject] ?? []
+  const criteria = parseModelCriteria(modelText)
+  const totalMarks = rows.reduce((sum, row) => sum + (Number.isInteger(Number(row.marks)) && Number(row.marks) > 0 ? Number(row.marks) : 0), 0)
+
+  /* ---- validation: one specific, actionable message per field ---- */
+  const errors: Record<string, string> = {}
+  if (!title.trim()) errors.title = 'Enter an exam title.'
+  else if (data.exams.some((exam) => exam.className === className && exam.title.trim().toLowerCase() === title.trim().toLowerCase())) errors.title = `${className} already has an exam called “${title.trim()}”. Use a different title.`
+  if (!date) errors.date = 'Choose the exam date.'
+  if (fileError) errors.modelFile = fileError
+  else if (!modelFile) errors.modelFile = 'Upload the approved model answer file (PDF, DOC or DOCX).'
+  if (!modelText.trim()) errors.modelText = 'Enter the model answer criteria, one per question (for example, “Q1: 3/4 is larger”).'
+  else {
+    const extra = criteria.map((value, index) => value !== undefined && index >= rows.length ? index + 1 : 0).filter(Boolean)
+    if (extra.length) errors.modelText = `Criteria for Q${extra.join(', Q')} ${extra.length > 1 ? 'have' : 'has'} no matching question. Remove ${extra.length > 1 ? 'them' : 'it'} or add a question.`
+  }
+  rows.forEach((row, index) => {
+    const n = index + 1
+    if (!row.question.trim()) errors[`q${index}-question`] = `Enter the text of question ${n}.`
+    if (!row.marks.trim()) errors[`q${index}-marks`] = `Enter the marks for question ${n}.`
+    else if (!Number.isInteger(Number(row.marks)) || Number(row.marks) < 1 || Number(row.marks) > MAX_MARKS) errors[`q${index}-marks`] = `Use a whole number from 1 to ${MAX_MARKS}.`
+    if (!row.skill) errors[`q${index}-skill`] = `Choose the skill question ${n} tests.`
+    if (modelText.trim() && !criteria[index]) errors[`q${index}-criterion`] = `Question ${n} has no model answer. Add a line starting with “Q${n}:” in the model answer criteria.`
+  })
+  // A field shows its error once the teacher has left it, or after a save attempt.
+  const show = (key: string) => (submitted || touched.has(key) ? errors[key] : undefined)
+  const showCriterion = (index: number) => (submitted || touched.has('modelText') ? errors[`q${index}-criterion`] : undefined)
+
+  /** Order, labels and target fields for the error summary. */
+  const fieldMeta: Array<{ key: string; fieldId: string; label: string }> = [
+    { key: 'title', fieldId: 'create-title', label: 'Exam title' },
+    { key: 'date', fieldId: 'create-date', label: 'Exam date' },
+    { key: 'modelFile', fieldId: 'create-modelFile', label: 'Model answer file' },
+    { key: 'modelText', fieldId: 'create-modelText', label: 'Model answer criteria' },
+    ...rows.flatMap((_, index) => [
+      { key: `q${index}-question`, fieldId: `create-q${index}-question`, label: `Q${index + 1} question` },
+      { key: `q${index}-marks`, fieldId: `create-q${index}-marks`, label: `Q${index + 1} marks` },
+      { key: `q${index}-skill`, fieldId: `create-q${index}-skill`, label: `Q${index + 1} skill tag` },
+      { key: `q${index}-criterion`, fieldId: 'create-modelText', label: `Q${index + 1} model answer` },
+    ]),
+  ]
+  const summary = fieldMeta.filter((item) => errors[item.key]).map((item) => ({ fieldId: item.fieldId, label: item.label, message: errors[item.key] }))
+
+  const chooseFile = (file: File | undefined) => {
+    touch('modelFile')
+    if (!file) return
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!allowedModelFiles.includes(extension)) { setFileError(`“${file.name}” is not a PDF, DOC or DOCX file. Choose the model answer in one of these formats.`); setModelFile(''); return }
+    setFileError(''); setModelFile(file.name)
+  }
+  const changeSubject = (value: string) => {
+    setSubject(value)
+    // Skill tags belong to a subject; clear tags that the new subject does not offer.
+    setRows((items) => items.map((item) => (skillsBySubject[value] ?? []).includes(item.skill) ? item : { ...item, skill: '' }))
+  }
+  const isDirty = Boolean(title.trim() || modelFile || modelText.trim())
+  const cancel = () => (isDirty ? setConfirmDiscard(true) : setScreen('exams'))
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    setSubmitted(true)
+    if (summary.length) { window.setTimeout(() => { summaryRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); summaryRef.current?.focus({ preventScroll: true }) }, 0); return }
+    const id = `exam-${Date.now()}`
+    update((current) => ({ ...current, exams: [{ id, title: title.trim(), subject, className, language, date, modelFile, modelText: modelText.trim(), sureCheck, faces: sureCheck && faces, status: 'Uploaded', released: false, questions: rows.map((row, index) => ({ prompt: row.question.trim(), skill: row.skill, max: Number(row.marks), expected: criteria[index] })) }, ...current.exams] }))
+    notify(`“${title.trim()}” saved for ${className}. It is ready for student uploads.`)
+    setScreen('exams')
+  }
+
   return <>
     <PageHeader crumbs={[examsCrumb(setScreen), { label: 'Create exam' }]} title="Create an exam" description="Set the model answer and marking criteria before students upload papers. Fields marked * are required." />
-    {error && <Alert tone="error">{error}</Alert>}
-    <form onSubmit={submit} className="t-form">
+    {submitted && summary.length > 0 && <ErrorSummary summaryRef={summaryRef} title={`Fix ${summary.length} ${summary.length === 1 ? 'field' : 'fields'} before saving the exam`} errors={summary} />}
+    <form onSubmit={submit} className="t-form" noValidate>
       <Card>
-        <CardHeader step={1} title="Exam information" description="Basic details of the assessment." />
+        <CardHeader step={1} title="Exam information" description="Subject, class, language and date of the assessment." />
         <div className="t-form-grid">
-          <div className="t-span-2"><TextField label="Exam title" value={title} onChange={setTitle} required placeholder="e.g. Math Quiz 4: Fractions" /></div>
-          <SelectField label="Subject" value={subject} options={['Math', 'Science']} onChange={setSubject} />
+          <div className="t-span-2"><TextField id="create-title" label="Exam title" value={title} onChange={setTitle} onBlur={() => touch('title')} error={show('title')} required placeholder="e.g. Math Quiz 4: Fractions" /></div>
+          <SelectField label="Subject" value={subject} options={Object.keys(skillsBySubject)} onChange={changeSubject} hint="Changing the subject updates the skill tags you can choose." />
           <SelectField label="Class" value={className} options={['Class 4B', 'Class 4A']} onChange={setClassName} />
           <SelectField label="Exam language" value={language} options={['English', 'German']} onChange={(value) => setLanguage(value as 'English' | 'German')} />
-          <TextField label="Exam date" value={date} onChange={setDate} type="date" required />
+          <TextField id="create-date" label="Exam date" value={date} onChange={setDate} onBlur={() => touch('date')} error={show('date')} type="date" required />
         </div>
       </Card>
 
       <Card>
         <CardHeader step={2} title="Model answer" description="AI grading uses only the answers and marks you enter here." action={<Badge>Teacher provided</Badge>} />
-        <label className={`t-dropzone ${modelFile ? 'has-file' : ''}`}>
-          <span className="t-row-icon" aria-hidden="true">{modelFile ? <FileText size={18} /> : <Upload size={18} />}</span>
-          <span><strong>{modelFile || 'Upload approved model answer'}</strong><small>PDF, DOC, or DOCX · selected file: {modelFile ? 'ready' : 'required'}</small></span>
-          <span className="t-dropzone-cta">{modelFile ? 'Replace file' : 'Choose file'}</span>
-          <input aria-label="Upload model answer" type="file" accept=".pdf,.doc,.docx" onChange={(event) => setModelFile(event.target.files?.[0]?.name ?? '')} />
-        </label>
-        <TextArea label="Model answer criteria" rows={4} required value={modelText} onChange={setModelText} hint="One approved answer criterion per line, in question order." placeholder="Q1: 3/4 is larger because 9/12 is greater than 8/12" />
+        <div className={cx('t-field', show('modelFile') && 'has-error')}>
+          <span className="t-field-label">Approved model answer file<span className="t-required" aria-hidden="true"> *</span></span>
+          <div className="t-file-row">
+            <label className={cx('t-dropzone', modelFile && 'has-file', show('modelFile') && 'has-error')}>
+              <span className="t-row-icon" aria-hidden="true">{modelFile ? <FileText size={18} /> : <Upload size={18} />}</span>
+              <span><strong>{modelFile || 'Upload approved model answer'}</strong><small>{modelFile ? 'Ready · this file is the approved marking reference' : 'PDF, DOC or DOCX'}</small></span>
+              <span className="t-dropzone-cta">{modelFile ? 'Replace file' : 'Choose file'}</span>
+              <input id="create-modelFile" aria-label="Upload model answer" aria-required="true" aria-invalid={show('modelFile') ? true : undefined} aria-describedby={show('modelFile') ? 'create-modelFile-error' : undefined} type="file" accept={allowedModelFiles.join(',')} onChange={(event) => { chooseFile(event.target.files?.[0]); event.target.value = '' }} />
+            </label>
+            {modelFile && <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={() => { setModelFile(''); touch('modelFile') }}>Remove</Button>}
+          </div>
+          {show('modelFile') && <small className="t-error" id="create-modelFile-error"><CircleAlert size={13} aria-hidden="true" />{show('modelFile')}</small>}
+        </div>
+        <TextArea id="create-modelText" label="Model answer criteria" rows={4} required value={modelText} onChange={setModelText} onBlur={() => touch('modelText')} error={show('modelText')} hint="Start each criterion with its question number, e.g. “Q1: …”. Each question below shows the criterion it will be graded against." placeholder={'Q1: 3/4 is larger because 9/12 is greater than 8/12.\nQ2: 4/8 is equivalent to 1/2.\nQ3: 5/8 + 1/8 = 6/8.'} />
       </Card>
 
       <Card>
-        <CardHeader step={3} title="Questions and skills" description="Every question needs whole-number marks and a skill tag." action={<Button variant="secondary" size="sm" icon={<Plus size={15} />} onClick={() => setRows((items) => [...items, { question: '', marks: '1', skill: '' }])}>Add question</Button>} />
-        <div className="t-question-list">{rows.map((row, index) => <div className="t-question-row" key={index}>
+        <CardHeader step={3} title="Questions, marks and skills" description={`Every question needs its text, whole-number marks and the skill it tests. Total: ${totalMarks} ${totalMarks === 1 ? 'mark' : 'marks'}.`} action={<Button variant="secondary" size="sm" icon={<Plus size={15} />} onClick={() => setRows((items) => [...items, { question: '', marks: '1', skill: '' }])}>Add question</Button>} />
+        <div className="t-question-list">{rows.map((row, index) => <div className={cx('t-question-row', (show(`q${index}-question`) || show(`q${index}-marks`) || show(`q${index}-skill`) || showCriterion(index)) && 'has-error')} key={index}>
           <span className="t-question-number">Q{index + 1}</span>
-          <TextField label="Question / model answer" value={row.question} onChange={(value) => setRows((items) => items.map((item, i) => i === index ? { ...item, question: value } : item))} required />
-          <TextField label="Marks" value={row.marks} onChange={(value) => setRows((items) => items.map((item, i) => i === index ? { ...item, marks: value } : item))} required type="number" min={1} />
-          <SelectField label="Skill tag" value={row.skill || 'Choose skill'} options={['Choose skill', 'Multiplication', 'Comparing Fractions', 'Adding Fractions', 'Word Problems', 'Equivalent Fractions']} onChange={(value) => setRows((items) => items.map((item, i) => i === index ? { ...item, skill: value === 'Choose skill' ? '' : value } : item))} />
+          <TextField id={`create-q${index}-question`} label="Question" value={row.question} onChange={(value) => updateRow(index, { question: value })} onBlur={() => touch(`q${index}-question`)} error={show(`q${index}-question`)} required />
+          <TextField id={`create-q${index}-marks`} label="Marks" value={row.marks} onChange={(value) => updateRow(index, { marks: value })} onBlur={() => touch(`q${index}-marks`)} error={show(`q${index}-marks`)} required type="number" min={1} max={MAX_MARKS} step={1} />
+          <SelectField id={`create-q${index}-skill`} label="Skill tag" value={row.skill} options={[{ value: '', label: 'Choose a skill' }, ...skillOptions.map((skill) => ({ value: skill, label: skill }))]} onChange={(value) => { updateRow(index, { skill: value }); touch(`q${index}-skill`) }} onBlur={() => touch(`q${index}-skill`)} error={show(`q${index}-skill`)} required />
+          <Button variant="ghost" size="sm" ariaLabel={`Remove question ${index + 1}`} icon={<Trash2 size={15} />} disabled={rows.length === 1} onClick={() => setRows((items) => items.filter((_, i) => i !== index))} />
+          <div className={cx('t-question-criterion', showCriterion(index) && 'is-missing')}>
+            {criteria[index] ? <><span className="t-overline">Graded against</span><span>{criteria[index]}</span></>
+              : showCriterion(index) ? <><CircleAlert size={13} aria-hidden="true" /><span>{showCriterion(index)}</span></>
+              : <span className="t-muted">Model answer: add “Q{index + 1}: …” to the criteria above.</span>}
+          </div>
         </div>)}</div>
       </Card>
 
       <Card>
-        <CardHeader step={4} title="Sure-Check" description="Confidence settings shown to students with each answer." action={<Badge tone={sureCheck ? 'success' : 'neutral'}>{sureCheck ? 'Enabled' : 'Disabled'}</Badge>} />
+        <CardHeader step={4} title="Sure-Check" description={`Confidence settings for ${className}. Students rate how sure they were after each answer.`} action={<Badge tone={sureCheck ? 'success' : 'neutral'}>{sureCheck ? 'On' : 'Off'}</Badge>} />
         <div className="t-toggle-list">
-          <Toggle label="Sure-Check" detail="Ask students how sure they felt about each answer." checked={sureCheck} onChange={setSureCheck} />
-          <Toggle label="Face icons for younger grades" detail="Show face icons with confidence choices for Grades 1–2." checked={faces} onChange={setFaces} disabled={!sureCheck} />
+          <Toggle label="Sure-Check" detail={sureCheck ? 'Students choose Sure, Not sure or Guessed for each answer.' : 'Off: students will not be asked how sure they felt.'} checked={sureCheck} onChange={setSureCheck} />
+          <Toggle label="Face icons for younger grades" detail={sureCheck ? 'Show face icons with the confidence choices (designed for Grades 1–2).' : 'Turn on Sure-Check to use face icons.'} checked={sureCheck && faces} onChange={setFaces} disabled={!sureCheck} />
         </div>
+        {sureCheck && <div className="t-sure-preview" aria-label="Student preview">
+          <span className="t-overline">Student preview</span>
+          <div>{[{ label: 'Sure', icon: <Smile size={16} /> }, { label: 'Not sure', icon: <Meh size={16} /> }, { label: 'Guessed', icon: <CircleHelp size={16} /> }].map((option) => <span className="t-sure-chip" key={option.label}>{faces && <span aria-hidden="true">{option.icon}</span>}{option.label}</span>)}</div>
+          {faces && <small className="t-hint">{className} is Grade 4. Face icons are designed for Grades 1–2.</small>}
+        </div>}
       </Card>
 
       <div className="t-form-footer">
-        <span>{data.exams.length} exams in Class 4B</span>
-        <div className="t-actions"><Button variant="secondary" onClick={() => setScreen('exams')}>Cancel</Button><Button type="submit" icon={<Check size={15} />}>Save exam</Button></div>
+        <span>{rows.length} {rows.length === 1 ? 'question' : 'questions'} · {totalMarks} marks{submitted && summary.length > 0 ? ` · ${summary.length} to fix` : ''}</span>
+        <div className="t-actions"><Button variant="secondary" onClick={cancel}>Cancel</Button><Button type="submit" icon={<Check size={15} />}>Save exam</Button></div>
       </div>
     </form>
+    {confirmDiscard && <Modal title="Discard this exam?" description="The details you entered will not be saved." onClose={() => setConfirmDiscard(false)} footer={<><Button variant="secondary" onClick={() => setConfirmDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={() => setScreen('exams')}>Discard exam</Button></>} />}
   </>
 }
 
@@ -370,7 +497,7 @@ function GradeReview({ exam, answers, data, update, setScreen, notify, setExam }
   const possible = examQuestions.reduce((sum, item) => sum + item.max, 0); const average = totals.length ? (totals.reduce((sum, item) => sum + item.total, 0) / totals.length).toFixed(1) : '0.0'; const passRate = totals.length ? Math.round(totals.filter((item) => item.total >= possible * .6).length / totals.length * 100) : 0
   const agreementItems = allExamAnswers.filter((item) => item.confirmed && !item.unreadable); const agreement = agreementItems.length ? Math.round(agreementItems.filter((item) => !item.overrideReason).length / agreementItems.length * 100) : 0
   const patchAnswer = (target: Answer, patch: Partial<Answer>) => update((current) => ({ ...current, answers: current.answers.map((item) => item.examId === target.examId && item.studentId === target.studentId && item.q === target.q ? { ...item, ...patch } : item) }))
-  const saveModelAndRegrade = () => { if (!modelDraft.trim()) return; const overridden = answers.filter((item) => item.examId === exam.id && item.overrideReason).map((item) => person(item.studentId).name); const criteria = modelDraft.split(/\r?\n/).map((line) => line.replace(/^Q\d+\s*:\s*/i, '').trim()).filter(Boolean); update((current) => ({ ...current, exams: current.exams.map((item) => item.id === exam.id ? { ...item, modelText: modelDraft.trim(), questions: questionsForExam(item.id, current.exams).map((question, index) => ({ ...question, expected: criteria[index] ?? question.expected })) } : item), answers: current.answers.map((answer) => { if (answer.examId !== exam.id || !answer.verified || answer.confirmed || answer.overrideReason || answer.unreadable) return answer; const expected = criteria[answer.q] ?? ''; if (!expected) return answer; const terms = [...new Set(expected.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter((term) => term.length > 1); const responseTerms = new Set(answer.response.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []); const matchedTerms = terms.filter((term) => responseTerms.has(term)); const missedTerms = terms.filter((term) => !responseTerms.has(term)); const score = terms.length ? Math.min(answer.max, Math.round((matchedTerms.length / terms.length) * answer.max)) : answer.ai; const sure = answer.sure; const correct = score >= answer.max * .75; const state = correct ? sure === 'Sure' ? 'Secure' : 'Wobbly' : sure === 'Sure' ? 'Surprise mistake' : 'Known gap'; return { ...answer, ai: score, score, confirmed: false, state, cause: correct ? 'No issue' : answer.cause, matched: matchedTerms.length ? matchedTerms.join(', ') : 'No model-answer criteria matched', missed: missedTerms.length ? missedTerms.join(', ') : 'Nothing missed' } }), regradeChecks: [...new Set([...current.regradeChecks, ...overridden])] })); setEditModel(false); notify(`Regrade complete for ${answers.filter((item) => item.examId === exam.id && item.verified && !item.unreadable && !item.confirmed && !item.overrideReason).length} unconfirmed answers. Teacher-confirmed and overridden grades were preserved and flagged for a second check.`) }
+  const saveModelAndRegrade = () => { if (!modelDraft.trim()) return; const overridden = answers.filter((item) => item.examId === exam.id && item.overrideReason).map((item) => person(item.studentId).name); const criteria = parseModelCriteria(modelDraft); update((current) => ({ ...current, exams: current.exams.map((item) => item.id === exam.id ? { ...item, modelText: modelDraft.trim(), questions: questionsForExam(item.id, current.exams).map((question, index) => ({ ...question, expected: criteria[index] ?? question.expected })) } : item), answers: current.answers.map((answer) => { if (answer.examId !== exam.id || !answer.verified || answer.confirmed || answer.overrideReason || answer.unreadable) return answer; const expected = criteria[answer.q] ?? ''; if (!expected) return answer; const terms = [...new Set(expected.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter((term) => term.length > 1); const responseTerms = new Set(answer.response.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []); const matchedTerms = terms.filter((term) => responseTerms.has(term)); const missedTerms = terms.filter((term) => !responseTerms.has(term)); const score = terms.length ? Math.min(answer.max, Math.round((matchedTerms.length / terms.length) * answer.max)) : answer.ai; const sure = answer.sure; const correct = score >= answer.max * .75; const state = correct ? sure === 'Sure' ? 'Secure' : 'Wobbly' : sure === 'Sure' ? 'Surprise mistake' : 'Known gap'; return { ...answer, ai: score, score, confirmed: false, state, cause: correct ? 'No issue' : answer.cause, matched: matchedTerms.length ? matchedTerms.join(', ') : 'No model-answer criteria matched', missed: missedTerms.length ? missedTerms.join(', ') : 'Nothing missed' } }), regradeChecks: [...new Set([...current.regradeChecks, ...overridden])] })); setEditModel(false); notify(`Regrade complete for ${answers.filter((item) => item.examId === exam.id && item.verified && !item.unreadable && !item.confirmed && !item.overrideReason).length} unconfirmed answers. Teacher-confirmed and overridden grades were preserved and flagged for a second check.`) }
   const confirm = (target: Answer) => { patchAnswer(target, { confirmed: true, score: target.ai, overrideReason: '' }); notify(`AI grade confirmed for ${person(target.studentId).name}.`) }
   const saveOverride = (target: Answer) => { if (!reason.trim() || !draftScore || Number(draftScore) < 0 || Number(draftScore) > target.max) return; patchAnswer(target, { score: Number(draftScore), confirmed: true, overrideReason: reason.trim() }); setEditing(null); setReason(''); notify('Teacher grade saved. This answer will appear in the second-check list after regrading.') }
   const confirmGroup = (group: Answer[]) => { const pending = group.filter((item) => !item.confirmed); update((current) => ({ ...current, answers: current.answers.map((answer) => group.some((item) => item.studentId === answer.studentId && item.q === answer.q) && answer.examId === exam.id && !answer.confirmed ? { ...answer, score: answer.ai, confirmed: true, overrideReason: '' } : answer) })); notify(`${pending.length} unconfirmed matching answers confirmed. Existing teacher decisions were preserved.`) }
